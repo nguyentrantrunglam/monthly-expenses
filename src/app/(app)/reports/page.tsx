@@ -193,8 +193,8 @@ export default function ReportsPage() {
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
-                    label={({ name, percent }) =>
-                      `${name} ${(percent * 100).toFixed(0)}%`
+                    label={({ name, percent }: any) =>
+                      `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`
                     }
                   >
                     {categoryBreakdown.map((_, i) => (
@@ -204,7 +204,7 @@ export default function ReportsPage() {
                       />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v: number) => fmt(v) + " đ"} />
+                  <Tooltip formatter={(v: any) => fmt(Number(v)) + " đ"} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-1 mt-2">
@@ -249,7 +249,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => fmt(v) + " đ"} />
+                  <Tooltip formatter={(v: any) => fmt(Number(v)) + " đ"} />
                   <Bar dataKey="value" fill="#ef4444" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -275,7 +275,7 @@ export default function ReportsPage() {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 11 }} />
-            <Tooltip formatter={(v: number) => fmt(v) + " đ"} />
+            <Tooltip formatter={(v: any) => fmt(Number(v)) + " đ"} />
             <Legend />
             <Bar
               dataKey="current"

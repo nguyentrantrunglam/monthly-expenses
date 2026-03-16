@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   useSessionDetail,
   type MemberSessionItem,
+  type Session,
 } from "@/hooks/useSession";
 import { useFixedItems } from "@/hooks/useFixedItems";
 import { useFamily } from "@/hooks/useFamily";
@@ -180,8 +181,8 @@ export default function SessionDetailPage() {
 
   const handleSessionUpdate = useCallback(
     async (patch: {
-      incomeItems?: typeof session.incomeItems;
-      sharedExpenses?: typeof session.sharedExpenses;
+      incomeItems?: Session["incomeItems"];
+      sharedExpenses?: Session["sharedExpenses"];
     }) => {
       if (!user?.familyId || !session) return;
       const db = getFirestoreDb();
