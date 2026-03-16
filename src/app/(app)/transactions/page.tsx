@@ -24,7 +24,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/ui/date-picker";
-import { MonthPicker } from "@/components/ui/month-picker";
 import {
   Table,
   TableBody,
@@ -41,7 +40,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { Receipt, Plus, Pencil, Trash2, X, Check, Wallet, TrendingDown, Scale } from "lucide-react";
+import { Receipt, Plus, Pencil, Trash2, X, Check, Wallet, Scale } from "lucide-react";
 
 const CATEGORIES = [
   "Ăn uống",
@@ -61,7 +60,6 @@ function fmt(n: number) {
 export default function TransactionsPage() {
   const user = useAuthStore((s) => s.user);
   const { family } = useFamily();
-  const [filterMonth, setFilterMonth] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const { transactions, loading, addTransaction, updateTransaction, deleteTransaction } =
     useTransactions({
@@ -109,7 +107,7 @@ export default function TransactionsPage() {
 
       const nextSessions: { id: string; month: string }[] = [];
       snap.forEach((d) => {
-        const data = d.data() as any;
+        const data = d.data();
         nextSessions.push({ id: d.id, month: data.month });
         if (data.status === "locked") {
           const allocRef = doc(
@@ -123,12 +121,12 @@ export default function TransactionsPage() {
           );
           const u = onSnapshot(allocRef, (allocSnap) => {
             if (allocSnap.exists()) {
-              const items = allocSnap.data().items ?? [];
+              const items = (allocSnap.data().items ?? []) as { type: string; userId?: string; amount?: number }[];
               const personal = items.find(
-                (i: any) => i.type === "personal" && i.userId === user.uid
+                (i) => i.type === "personal" && i.userId === user.uid
               );
               const shared = items.find(
-                (i: any) => i.type === "shared_pool"
+                (i) => i.type === "shared_pool"
               );
               setSessionBudgets((prev) => ({
                 ...prev,
@@ -176,7 +174,6 @@ export default function TransactionsPage() {
     return { startStr, endStr, spendingMonth, budgetMonth };
   }
 
-  const activeSpendingMonth = filterMonth;
   const budgetFromSession = selectedSessionMonth ?? "";
 
   // Chọn session hiện tại làm mặc định (dựa trên ngày hôm nay)
@@ -189,10 +186,9 @@ export default function TransactionsPage() {
       return todayStr >= startStr && todayStr <= endStr;
     });
     if (current) {
-      const { spendingMonth } = sessionRange(current.month);
       setSelectedSessionMonth(current.month);
-      setFilterMonth(spendingMonth);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions, selectedSessionMonth, cycleDay]);
 
   const activeBudget = sessionBudgets[budgetFromSession] ?? null;
@@ -266,6 +262,7 @@ export default function TransactionsPage() {
     return transactions.filter(
       (t) => t.date >= startStr && t.date <= endStr
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, selectedSessionMonth, cycleDay]);
 
   const totalExpense = visibleTransactions
@@ -285,6 +282,7 @@ export default function TransactionsPage() {
           t.spendingType === "personal"
       )
       .reduce((s, t) => s + t.amount, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, selectedSessionMonth, cycleDay]);
 
   const sharedSpending = useMemo(() => {
@@ -299,6 +297,7 @@ export default function TransactionsPage() {
           t.spendingType === "shared_pool"
       )
       .reduce((s, t) => s + t.amount, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, selectedSessionMonth, cycleDay]);
 
   const personalRemaining =
@@ -593,13 +592,10 @@ export default function TransactionsPage() {
           value={selectedSessionMonth || "__all__"}
           onValueChange={(sessionMonth) => {
             if (sessionMonth === "__all__") {
-              setFilterMonth("");
               setSelectedSessionMonth(null);
               return;
             }
-            const { spendingMonth } = sessionRange(sessionMonth);
             setSelectedSessionMonth(sessionMonth);
-            setFilterMonth(spendingMonth);
           }}
         >
           <SelectTrigger className="w-52">
@@ -674,7 +670,7 @@ export default function TransactionsPage() {
           <div>
             <p className="font-medium">Chưa có giao dịch nào</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Nhấn "Thêm giao dịch" để bắt đầu ghi chép.
+              Nhấn &quot;Thêm giao dịch&quot; để bắt đầu ghi chép.
             </p>
           </div>
         </Card>
@@ -728,8 +724,8 @@ function TransactionsTable({
 }: {
   transactions: Transaction[];
   totalExpense: number;
-  user: any;
-  family: any;
+  user: import("@/lib/stores/authStore").AuthUser | null;
+  family: import("@/hooks/useFamily").Family | null;
   editingId: string | null;
   editTitle: string;
   setEditTitle: (v: string) => void;

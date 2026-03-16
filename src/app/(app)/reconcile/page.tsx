@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   collection,
   doc,
-  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -65,7 +64,7 @@ interface AllocationData {
 
 export default function ReconcilePage() {
   const user = useAuthStore((s) => s.user);
-  const { family } = useFamily();
+  useFamily();
   const { records, loading: recLoading, addReconciliation } = useReconcile();
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -91,7 +90,7 @@ export default function ReconcilePage() {
     const unsub = onSnapshot(q, (snap) => {
       const list: SessionSummary[] = [];
       snap.forEach((d) => {
-        const data = d.data() as any;
+        const data = d.data();
         if (data.status === "locked") {
           list.push({ id: d.id, month: data.month, status: data.status });
         }
@@ -103,6 +102,7 @@ export default function ReconcilePage() {
       }
     });
     return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.familyId]);
 
   // Load allocation + transactions for selected session
@@ -122,7 +122,7 @@ export default function ReconcilePage() {
     );
     const unsub1 = onSnapshot(allocRef, (snap) => {
       if (snap.exists()) {
-        const data = snap.data() as any;
+        const data = snap.data();
         setAllocation({
           items: data.items ?? [],
           savingsAmount: data.savingsAmount ?? 0,
@@ -136,7 +136,7 @@ export default function ReconcilePage() {
     const unsub2 = onSnapshot(query(txCol, orderBy("date", "desc")), (snap) => {
       const list: typeof monthTransactions = [];
       snap.forEach((d) => {
-        const data = d.data() as any;
+        const data = d.data();
         if (data.date?.startsWith(selectedMonth) && data.userId === user.uid) {
           list.push({
             amount: data.amount,
@@ -193,11 +193,13 @@ export default function ReconcilePage() {
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [monthTransactions]);
 
-  const monthRecords = useMemo(() => {
+  useMemo(() => {
     return records.filter((r) => {
-      const dateStr = r.createdAt?.toDate
-        ? r.createdAt.toDate().toISOString()
-        : new Date(r.createdAt).toISOString();
+      const ca = r.createdAt;
+      const dateStr =
+        typeof ca === "object" && ca && "toDate" in ca && typeof ca.toDate === "function"
+          ? (ca.toDate() as Date).toISOString()
+          : new Date(ca as string).toISOString();
       return dateStr.startsWith(selectedMonth);
     });
   }, [records, selectedMonth]);
@@ -487,7 +489,7 @@ function ReconcileHistory({
   records,
   loading,
 }: {
-  records: any[];
+  records: import("@/hooks/useReconcile").Reconciliation[];
   loading: boolean;
 }) {
   const [page, setPage] = useState(1);
@@ -521,12 +523,12 @@ function ReconcileHistory({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paged.map((r: any) => (
+              {paged.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="text-xs">
-                    {r.createdAt?.toDate
-                      ? r.createdAt.toDate().toLocaleDateString("vi-VN")
-                      : new Date(r.createdAt).toLocaleDateString("vi-VN")}
+                    {typeof r.createdAt === "object" && r.createdAt && "toDate" in r.createdAt && typeof r.createdAt.toDate === "function"
+                      ? (r.createdAt.toDate() as Date).toLocaleDateString("vi-VN")
+                      : new Date(r.createdAt as string).toLocaleDateString("vi-VN")}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {fmt(r.actualBalance)} đ

@@ -131,7 +131,7 @@ export default function FixedItemsSettingsPage() {
         category: editCategory,
         categoryName: editCategoryName.trim() || null,
         dayOfMonth: parsedDay,
-      } as any);
+      });
       setEditingId(null);
     } catch (err) {
       console.error(err);
@@ -339,7 +339,7 @@ function FixedItemsTable({
   cancelEdit: () => void;
   startEdit: (item: FixedItem) => void;
   deleteItem: (id: string) => Promise<void>;
-  updateItem: (id: string, data: any) => Promise<void>;
+  updateItem: (id: string, data: Partial<FixedItem>) => Promise<void>;
   categoryOptions: string[];
 }) {
   const [page, setPage] = useState(1);
@@ -583,9 +583,10 @@ type CategoryManagerProps = {
 function CategoryManager({
   categories,
   addCategory,
-  updateCategory,
+  updateCategory: _updateCategory,
   deleteCategory,
 }: CategoryManagerProps) {
+  void _updateCategory;
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
 

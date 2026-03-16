@@ -167,8 +167,8 @@ export default function FamilySettingsPage() {
                         setRemovingMember(id);
                         try {
                           await removeMember(id);
-                        } catch (err: any) {
-                          alert(err.message || "Xóa thất bại");
+                        } catch (err: unknown) {
+                          alert(err instanceof Error ? err.message : "Xóa thất bại");
                         } finally {
                           setRemovingMember(null);
                         }
@@ -234,9 +234,9 @@ export default function FamilySettingsPage() {
               setDeleting(true);
               try {
                 await deleteFamily();
-              } catch (err: any) {
+              } catch (err: unknown) {
                 console.error(err);
-                setError(err?.message || "Không xóa được gia đình.");
+                setError(err instanceof Error ? err.message : "Không xóa được gia đình.");
                 setDeleting(false);
               }
             }}

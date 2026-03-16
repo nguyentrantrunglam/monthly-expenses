@@ -10,7 +10,6 @@ import {
   orderBy,
   query,
   updateDoc,
-  where,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase/client";
 import { useAuthStore } from "@/lib/stores/authStore";
@@ -26,7 +25,7 @@ export interface Transaction {
   userId: string;
   note: string;
   date: string;
-  createdAt: any;
+  createdAt: unknown;
 }
 
 export function useTransactions(filters?: {
@@ -40,6 +39,7 @@ export function useTransactions(filters?: {
 
   useEffect(() => {
     if (!user?.familyId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTransactions([]);
       return;
     }
@@ -50,7 +50,7 @@ export function useTransactions(filters?: {
     const unsub = onSnapshot(q, (snap) => {
       let list: Transaction[] = [];
       snap.forEach((d) => {
-        const data = d.data() as any;
+        const data = d.data();
         list.push({
           id: d.id,
           title: data.title ?? "",

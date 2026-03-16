@@ -343,8 +343,8 @@ function SessionTable({
                           return;
                         setDeleting(s.id);
                         deleteSession(s.id)
-                          .catch((err: any) =>
-                            alert(err.message || "Xóa thất bại")
+                          .catch((err: unknown) =>
+                            alert(err instanceof Error ? err.message : "Xóa thất bại")
                           )
                           .finally(() => setDeleting(null));
                       }}
@@ -463,8 +463,8 @@ function CreateSessionForm({
         memberIds: familyMembers,
       });
       onCreated(id);
-    } catch (err: any) {
-      setError(err?.message || "Không tạo được session.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Không tạo được session.");
     } finally {
       setSubmitting(false);
     }

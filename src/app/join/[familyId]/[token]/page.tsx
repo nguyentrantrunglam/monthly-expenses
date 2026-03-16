@@ -29,6 +29,7 @@ export default function JoinByTokenPage() {
     if (loading) return;
 
     if (!user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMessage("Bạn cần đăng nhập trước khi tham gia gia đình.");
       setStatus("error");
       return;
@@ -58,7 +59,7 @@ export default function JoinByTokenPage() {
           return;
         }
 
-        const invite = inviteSnap.data() as any;
+        const invite = inviteSnap.data();
 
         if (invite.used) {
           setMessage("Link mời đã được sử dụng.");

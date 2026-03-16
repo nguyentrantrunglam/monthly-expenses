@@ -14,7 +14,7 @@ interface Deposit {
   month: string;
   amount: number;
   sessionId: string;
-  createdAt: any;
+  createdAt: { toDate?: () => Date } | string;
 }
 
 export default function SavingsPage() {
@@ -29,7 +29,7 @@ export default function SavingsPage() {
     const ref = doc(db, "families", user.familyId, "savingsFund", "main");
     const unsub = onSnapshot(ref, (snap) => {
       if (snap.exists()) {
-        const data = snap.data() as any;
+        const data = snap.data();
         setBalance(data.balance ?? 0);
         setDeposits(data.deposits ?? []);
       } else {

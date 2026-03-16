@@ -58,7 +58,7 @@ export default function AllocationPage() {
     const unsub = onSnapshot(q, (snap) => {
       const list: typeof transactions = [];
       snap.forEach((d) => {
-        const data = d.data() as any;
+        const data = d.data();
         list.push({
           userId: data.userId,
           amount: data.amount ?? 0,
@@ -173,6 +173,7 @@ export default function AllocationPage() {
       });
     }
     setItems(updated);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [family, seeded]);
 
   const totalAllocated = items.reduce((s, i) => s + i.amount, 0);

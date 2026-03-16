@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import {
   addDoc,
   collection,
-  deleteDoc,
   doc,
+  DocumentData,
   getDoc,
   getDocs,
   onSnapshot,
@@ -42,8 +42,8 @@ export interface Session {
   totalIncome: number;
   totalExpense: number;
   remainingBudget: number;
-  createdAt: any;
-  lockedAt: any;
+  createdAt: unknown;
+  lockedAt: unknown;
 }
 
 export interface MemberSessionItem {
@@ -59,7 +59,7 @@ export interface MemberSessionItem {
 
 export interface MemberItems {
   status: "pending" | "done";
-  confirmedAt: any;
+  confirmedAt: unknown;
   items: MemberSessionItem[];
 }
 
@@ -70,6 +70,7 @@ export function useSessions() {
 
   useEffect(() => {
     if (!user?.familyId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSessions([]);
       return;
     }
@@ -80,7 +81,7 @@ export function useSessions() {
     const unsub = onSnapshot(q, (snap) => {
       const list: Session[] = [];
       snap.forEach((d) => {
-        const data = d.data() as any;
+        const data = d.data();
         list.push({
           id: d.id,
           month: data.month,
@@ -207,7 +208,7 @@ export function useSessionDetail(sessionId: string) {
         setLoading(false);
         return;
       }
-      const data = snap.data() as any;
+      const data = snap.data() as DocumentData;
       setSession({
         id: snap.id,
         month: data.month,
@@ -243,7 +244,7 @@ export function useSessionDetail(sessionId: string) {
       if (!snap.exists()) {
         setMemberItems(null);
       } else {
-        const data = snap.data() as any;
+        const data = snap.data() as DocumentData;
         setMemberItems({
           status: data.status ?? "pending",
           confirmedAt: data.confirmedAt,
@@ -269,7 +270,7 @@ export function useSessionDetail(sessionId: string) {
     const unsub = onSnapshot(col, (snap) => {
       const map: Record<string, MemberItems> = {};
       snap.forEach((d) => {
-        const data = d.data() as any;
+        const data = d.data();
         map[d.id] = {
           status: data.status ?? "pending",
           confirmedAt: data.confirmedAt,
@@ -339,7 +340,7 @@ export function useSessionDetail(sessionId: string) {
     const sessRef = doc(db, "families", user.familyId, "sessions", sid);
     const sessSnap = await getDoc(sessRef);
     if (!sessSnap.exists()) return;
-    const sessData = sessSnap.data() as any;
+    const sessData = sessSnap.data() as DocumentData;
 
     const miCol = collection(
       db,
@@ -354,7 +355,7 @@ export function useSessionDetail(sessionId: string) {
     let memberExpenseTotal = 0;
     let memberIncomeTotal = 0;
     miSnap.forEach((d) => {
-      const data = d.data() as any;
+      const data = d.data();
       (data.items ?? []).forEach((item: MemberSessionItem) => {
         if (item.column === "expense") {
           memberExpenseTotal += item.amount;

@@ -17,7 +17,7 @@ export interface Reconciliation {
   calculatedBalance: number;
   difference: number;
   note: string;
-  createdAt: any;
+  createdAt: { toDate?: () => Date } | string;
   createdBy: string;
 }
 
@@ -28,6 +28,7 @@ export function useReconcile() {
 
   useEffect(() => {
     if (!user?.familyId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRecords([]);
       return;
     }
@@ -38,7 +39,7 @@ export function useReconcile() {
     const unsub = onSnapshot(q, (snap) => {
       const list: Reconciliation[] = [];
       snap.forEach((d) => {
-        const data = d.data() as any;
+        const data = d.data();
         list.push({
           id: d.id,
           actualBalance: data.actualBalance,

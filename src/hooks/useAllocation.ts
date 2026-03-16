@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   doc,
+  DocumentData,
   onSnapshot,
   setDoc,
   serverTimestamp,
@@ -19,10 +20,17 @@ export interface AllocationItem {
   amount: number;
 }
 
+interface SavingsDeposit {
+  month: string;
+  amount: number;
+  sessionId: string;
+  createdAt: Date;
+}
+
 export interface Allocation {
   items: AllocationItem[];
   savingsAmount: number;
-  confirmedAt: any;
+  confirmedAt: unknown;
   confirmedBy: string | null;
 }
 
@@ -56,7 +64,7 @@ export function useAllocation(sessionId: string) {
       if (!snap.exists()) {
         setAllocation(null);
       } else {
-        const data = snap.data() as any;
+        const data = snap.data() as DocumentData;
         setAllocation({
           items: data.items ?? [],
           savingsAmount: data.savingsAmount ?? 0,
@@ -103,8 +111,8 @@ export function useAllocation(sessionId: string) {
 
     if (savingsSnap.exists()) {
       const existing = savingsSnap.data();
-      const deposits: any[] = existing.deposits ?? [];
-      const idx = deposits.findIndex((d: any) => d.sessionId === sessionId);
+      const deposits: SavingsDeposit[] = existing.deposits ?? [];
+      const idx = deposits.findIndex((d) => d.sessionId === sessionId);
       if (idx >= 0) {
         deposits[idx] = {
           ...deposits[idx],
@@ -119,7 +127,7 @@ export function useAllocation(sessionId: string) {
           createdAt: new Date(),
         });
       }
-      const balance = deposits.reduce((s: number, d: any) => s + d.amount, 0);
+      const balance = deposits.reduce((s, d) => s + d.amount, 0);
       await updateDoc(savingsRef, { balance, deposits });
     } else {
       await setDoc(savingsRef, {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useTransactions, type Transaction } from "@/hooks/useTransactions";
+import { useTransactions } from "@/hooks/useTransactions";
 import { useFamily } from "@/hooks/useFamily";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -193,6 +193,7 @@ export default function ReportsPage() {
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     label={({ name, percent }: any) =>
                       `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`
                     }
@@ -204,6 +205,7 @@ export default function ReportsPage() {
                       />
                     ))}
                   </Pie>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   <Tooltip formatter={(v: any) => fmt(Number(v)) + " đ"} />
                 </PieChart>
               </ResponsiveContainer>
@@ -249,6 +251,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 11 }} />
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   <Tooltip formatter={(v: any) => fmt(Number(v)) + " đ"} />
                   <Bar dataKey="value" fill="#ef4444" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -275,6 +278,7 @@ export default function ReportsPage() {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 11 }} />
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
             <Tooltip formatter={(v: any) => fmt(Number(v)) + " đ"} />
             <Legend />
             <Bar

@@ -23,7 +23,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase/client";
-import { Wallet, TrendingDown, Scale } from "lucide-react";
+import { Wallet, Scale } from "lucide-react";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
@@ -87,7 +87,7 @@ export default function SessionDetailPage() {
     const unsub = onSnapshot(q, (snap) => {
       const list: typeof transactions = [];
       snap.forEach((d) => {
-        const data = d.data() as any;
+        const data = d.data();
         list.push({
           userId: data.userId,
           amount: data.amount ?? 0,
@@ -102,6 +102,7 @@ export default function SessionDetailPage() {
 
   const cycleDay = family?.cycleDay ?? 1;
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const sessionRange = useMemo(() => {
     if (!session?.month) return null;
     const [y, m] = session.month.split("-").map(Number);
@@ -157,6 +158,7 @@ export default function SessionDetailPage() {
       }));
 
     const merged = [...savedItems, ...newFromFixed];
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBoardItems(merged);
   }, [session, user, memberItems, fixedItems]);
 
@@ -193,7 +195,7 @@ export default function SessionDetailPage() {
       const totalIncome = nextIncome.reduce((s, i) => s + i.amount, 0);
       const totalExpense = nextExpense.reduce((s, i) => s + i.amount, 0);
 
-      const updateData: Record<string, any> = { ...patch };
+      const updateData: Record<string, unknown> = { ...patch };
       if (patch.incomeItems) {
         updateData.totalIncome = totalIncome;
         updateData.remainingBudget = totalIncome - totalExpense;
@@ -205,7 +207,7 @@ export default function SessionDetailPage() {
 
       await updateDoc(ref, updateData);
     },
-    [user?.familyId, session, sessionId]
+    [user, session, sessionId]
   );
 
   const handleConfirm = async () => {
@@ -262,9 +264,6 @@ export default function SessionDetailPage() {
   }
 
   const myStatus = user ? session.memberStatus[user.uid] : "pending";
-  const allDone = Object.values(session.memberStatus).every(
-    (v) => v === "done"
-  );
   const isLocked = session.status === "locked";
   const boardDisabled = isLocked || myStatus === "done";
 

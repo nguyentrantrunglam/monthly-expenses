@@ -128,12 +128,12 @@ export default function ProfilePage() {
       setAvatarFile(null);
       setAvatarPreview(null);
       setProfileMsg({ type: "success", text: "Đã cập nhật thông tin." });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setUploadingAvatar(false);
       setProfileMsg({
         type: "error",
-        text: err.message || "Cập nhật thất bại.",
+        text: err instanceof Error ? err.message : "Cập nhật thất bại.",
       });
     } finally {
       setSaving(false);
@@ -171,12 +171,13 @@ export default function ProfilePage() {
       setNewPassword("");
       setConfirmPassword("");
       setPwMsg({ type: "success", text: "Đã đổi mật khẩu thành công." });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
+      const firebaseErr = err as { code?: string; message?: string };
       const msg =
-        err.code === "auth/wrong-password" || err.code === "auth/invalid-credential"
+        firebaseErr.code === "auth/wrong-password" || firebaseErr.code === "auth/invalid-credential"
           ? "Mật khẩu hiện tại không đúng."
-          : err.message || "Đổi mật khẩu thất bại.";
+          : firebaseErr.message || "Đổi mật khẩu thất bại.";
       setPwMsg({ type: "error", text: msg });
     } finally {
       setChangingPw(false);

@@ -4,14 +4,11 @@ import { useEffect, useState } from "react";
 import {
   collection,
   doc,
-  getDoc,
+  DocumentData,
   getDocs,
   onSnapshot,
   serverTimestamp,
   setDoc,
-  updateDoc,
-  deleteDoc,
-  addDoc,
   writeBatch,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase/client";
@@ -55,7 +52,7 @@ export function useFamily() {
         if (!snap.exists()) {
           setFamily(null);
         } else {
-          const data = snap.data() as any;
+          const data = snap.data() as DocumentData;
           setFamily({
             id: snap.id,
             name: data.name,
@@ -121,15 +118,6 @@ export function useFamily() {
     return { token, familyId: user.familyId };
   };
 
-  const joinByToken = async (token: string) => {
-    if (!user) throw new Error("Chưa đăng nhập");
-    const db = getFirestoreDb();
-    // find family by invite token
-    const invitesCol = collection(db, "families");
-    // For simplicity, expect frontend to call /join/[token] with known familyId later
-    return { token };
-  };
-
   const deleteFamily = async () => {
     if (!user || !user.familyId || !family) throw new Error("Không có gia đình");
     if (family.createdBy !== user.uid) throw new Error("Chỉ owner mới xóa được");
@@ -174,7 +162,8 @@ export function useFamily() {
     const db = getFirestoreDb();
     const batch = writeBatch(db);
 
-    const { [memberId]: _, ...restMembers } = family.members;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [memberId]: _removed, ...restMembers } = family.members;
     batch.update(doc(db, "families", user.familyId), { members: restMembers });
     batch.set(doc(db, "users", memberId), { familyId: null }, { merge: true });
 

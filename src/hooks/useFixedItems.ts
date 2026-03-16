@@ -45,6 +45,7 @@ export function useFixedItems() {
 
   useEffect(() => {
     if (!user?.familyId || !user.uid) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setItems([]);
       setCategories([]);
       return;
@@ -71,7 +72,7 @@ export function useFixedItems() {
       (snap) => {
         const next: FixedItem[] = [];
         snap.forEach((docSnap) => {
-          const data = docSnap.data() as any;
+          const data = docSnap.data();
           if (data.userId !== user.uid) return; // chỉ lấy khoản cá nhân của mình
           next.push({
             id: docSnap.id,
@@ -99,7 +100,7 @@ export function useFixedItems() {
       (snap) => {
         const next: FixedItemCategoryMeta[] = [];
         snap.forEach((d) => {
-          const data = d.data() as any;
+          const data = d.data();
           next.push({
             id: d.id,
             name: data.name as string,
@@ -159,7 +160,8 @@ export function useFixedItems() {
       "fixedItems",
       id
     );
-    const { id: _id, ...rest } = patch as any;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _id, ...rest } = patch;
     await updateDoc(ref, rest);
   };
 
