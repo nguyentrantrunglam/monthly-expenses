@@ -40,7 +40,7 @@ interface Props {
   isOwner: boolean;
 }
 
-type ColumnId = "personal" | "income" | "expense";
+type ColumnId = "personal" | "income" | "expense" | "trash";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
@@ -67,7 +67,7 @@ export function SessionBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, {
       activationConstraint: { delay: 200, tolerance: 5 },
-    })
+    }),
   );
 
   const handleDragEnd = useCallback(
@@ -82,6 +82,18 @@ export function SessionBoard({
 
       const item = items[idx];
       if (!item) return;
+
+      // Kéo vào vùng xóa: chỉ cho phép xóa các thẻ quick được tạo trong session
+      if (targetColumn === "trash") {
+        if (item.fixedItemId?.startsWith("_quick_")) {
+          const next = items.filter((_, i) => i !== idx);
+          setItems(next);
+          onItemsChange(next);
+        } else {
+          toast.warning("Chỉ xóa được các khoản tạo tạm trong session này.");
+        }
+        return;
+      }
 
       const isIncomeType =
         item.type === "income" ||
@@ -111,7 +123,7 @@ export function SessionBoard({
       setItems(next);
       onItemsChange(next);
     },
-    [items, disabled, onItemsChange]
+    [items, disabled, onItemsChange],
   );
 
   const handleAmountChange = useCallback(
@@ -121,7 +133,7 @@ export function SessionBoard({
       setItems(next);
       onItemsChange(next);
     },
-    [items, onItemsChange]
+    [items, onItemsChange],
   );
 
   // Collect other members' items that are in income/expense columns
@@ -174,6 +186,15 @@ export function SessionBoard({
     setShowAdd(false);
   };
 
+  const handleDeleteQuickItem = useCallback(
+    (index: number) => {
+      const next = items.filter((_, i) => i !== index);
+      setItems(next);
+      onItemsChange(next);
+    },
+    [items, onItemsChange],
+  );
+
   const closeAddForm = () => {
     setShowAdd(false);
     setAddTitle("");
@@ -196,6 +217,7 @@ export function SessionBoard({
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <div className="grid gap-4 md:grid-cols-3">
         {/* Cột 1: Kho cá nhân */}
+
         <DroppableColumn
           id="personal"
           title="Kho cá nhân"
@@ -211,8 +233,13 @@ export function SessionBoard({
                   index={idx}
                   onAmountChange={handleAmountChange}
                   disabled={disabled}
+                  onDelete={
+                    item.fixedItemId?.startsWith("_quick_")
+                      ? handleDeleteQuickItem
+                      : undefined
+                  }
                 />
-              )
+              ),
           )}
           {personalItems.length === 0 && !showAdd && (
             <p className="text-xs text-muted-foreground text-center py-4">
@@ -322,10 +349,9 @@ export function SessionBoard({
                   key={idx}
                   item={item}
                   index={idx}
-                  onAmountChange={handleAmountChange}
                   disabled={disabled}
                 />
-              )
+              ),
           )}
           {otherIncomeItems.map((item, i) => (
             <div
@@ -382,10 +408,9 @@ export function SessionBoard({
                   key={idx}
                   item={item}
                   index={idx}
-                  onAmountChange={handleAmountChange}
                   disabled={disabled}
                 />
-              )
+              ),
           )}
           {otherExpenseItems.map((item, i) => (
             <div
@@ -417,7 +442,9 @@ export function SessionBoard({
 
       <div className="mt-4 grid grid-cols-3 gap-4">
         <div className="rounded-lg border bg-card p-3 text-center">
-          <p className="text-[11px] text-muted-foreground mb-0.5">Kho cá nhân</p>
+          <p className="text-[11px] text-muted-foreground mb-0.5">
+            Kho cá nhân
+          </p>
           <p className="text-sm font-semibold text-muted-foreground">
             {fmt(personalTotal)} đ
           </p>
@@ -443,7 +470,9 @@ export function SessionBoard({
             : "border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/30"
         }`}
       >
-        <span className="text-xs text-muted-foreground">Còn lại sau chi cố định: </span>
+        <span className="text-xs text-muted-foreground">
+          Còn lại sau chi cố định:{" "}
+        </span>
         <span
           className={`text-base font-bold ${
             incomeTotal - expenseTotal >= 0
@@ -479,8 +508,7 @@ function EditableSessionItem({
     color === "green"
       ? "bg-green-50 dark:bg-green-950"
       : "bg-red-50 dark:bg-red-950";
-  const textColor =
-    color === "green" ? "text-green-600" : "text-red-500";
+  const textColor = color === "green" ? "text-green-600" : "text-red-500";
 
   const handleSave = () => {
     const parsed = Number(editAmount.replace(/\D/g, "")) || 0;

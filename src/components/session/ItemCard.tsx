@@ -2,6 +2,7 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { MemberSessionItem } from "@/hooks/useSession";
 
@@ -14,11 +15,13 @@ export function ItemCard({
   index,
   onAmountChange,
   disabled,
+  onDelete,
 }: {
   item: MemberSessionItem;
   index: number;
   onAmountChange?: (index: number, amount: number) => void;
   disabled?: boolean;
+  onDelete?: (index: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
@@ -50,7 +53,12 @@ export function ItemCard({
       style={style}
       {...listeners}
       {...attributes}
-      className={`rounded-md border p-3 bg-card shadow-sm text-sm cursor-grab active:cursor-grabbing select-none ${
+      className={`rounded-md border ${
+        /* item ở cột income/expense sẽ mỏng hơn */ item.column === "income" ||
+        item.column === "expense"
+          ? "p-2 text-xs"
+          : "p-3 text-sm"
+      } bg-card shadow-sm cursor-grab active:cursor-grabbing select-none ${
         isDragging ? "ring-2 ring-primary" : ""
       } ${
         item.column === "personal" && item.type === "income"
@@ -60,7 +68,7 @@ export function ItemCard({
             : ""
       }`}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="font-medium wrap-break-word">{item.title}</span>
@@ -76,23 +84,39 @@ export function ItemCard({
               </span>
             )}
           </div>
-          {item.categoryName && (
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {item.categoryName}
-            </p>
-          )}
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {item.categoryName || "-"}
+          </p>
         </div>
-        <span
-          className={`text-xs font-semibold whitespace-nowrap ${
-            isIncome || item.type === "income"
-              ? "text-green-600"
-              : isExpense || item.type === "expense"
-                ? "text-red-500"
-                : "text-muted-foreground"
-          }`}
-        >
-          {fmt(item.amount)} đ
-        </span>
+        <div className="flex items-center gap-1">
+          <span
+            className={`text-xs font-semibold whitespace-nowrap ${
+              isIncome || item.type === "income"
+                ? "text-green-600"
+                : isExpense || item.type === "expense"
+                  ? "text-red-500"
+                  : "text-muted-foreground"
+            }`}
+          >
+            {fmt(item.amount)} đ
+          </span>
+          {onDelete &&
+            item.column === "personal" &&
+            item.fixedItemId?.startsWith("_quick_") &&
+            !disabled && (
+              <button
+                type="button"
+                className="ml-0.5 rounded p-0.5 text-[10px] text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-950"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(index);
+                }}
+                aria-label="Xóa khoản tạm thời này"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+        </div>
       </div>
       {onAmountChange && !disabled && (
         <Input
