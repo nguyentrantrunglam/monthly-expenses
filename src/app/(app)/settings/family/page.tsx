@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useFamily } from "@/hooks/useFamily";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { UserMinus } from "lucide-react";
 
 export default function FamilySettingsPage() {
-  const { family, createFamily, createInvite, deleteFamily, removeMember, loading } = useFamily();
+  const { family, createFamily, createInvite, deleteFamily, removeMember, updateSharedNote, loading } = useFamily();
   const user = useAuthStore((s) => s.user);
   const router = useRouter();
   const [name, setName] = useState("");
@@ -32,6 +33,12 @@ export default function FamilySettingsPage() {
   const [deleting, setDeleting] = useState(false);
   const [removingMember, setRemovingMember] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [sharedNote, setSharedNote] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+
+  useEffect(() => {
+    if (family) setSharedNote(family.sharedNote ?? "");
+  }, [family]);
 
   const handleCreateFamily = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,6 +132,19 @@ export default function FamilySettingsPage() {
   const isOwner =
     family.members[user.uid]?.role === "owner" || family.createdBy === user.uid;
 
+  const handleSaveNote = async () => {
+    if (!family || sharedNote === (family.sharedNote ?? "")) return;
+    setSavingNote(true);
+    try {
+      await updateSharedNote(sharedNote);
+    } catch (err) {
+      console.error(err);
+      setError("Không lưu được ghi chú.");
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
   return (
     <div className="max-w-2xl space-y-6">
       <div>
@@ -145,6 +165,30 @@ export default function FamilySettingsPage() {
             <p className="mt-0.5 text-sm font-semibold">Ngày {family.cycleDay} hàng tháng</p>
           </div>
         </div>
+      </Card>
+
+      <Card className="p-5 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold">Ghi chú văn bản</p>
+          <Button
+            size="sm"
+            disabled={savingNote || sharedNote === (family.sharedNote ?? "")}
+            onClick={handleSaveNote}
+          >
+            {savingNote ? "Đang lưu..." : "Lưu"}
+          </Button>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Ghi chú văn bản tự do cho gia đình. Để dùng checklist có ngày hạn, hãy vào mục Ghi chú chung trên menu.
+        </p>
+        <Textarea
+          placeholder="Nhập ghi chú chung cho gia đình..."
+          value={sharedNote}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setSharedNote(e.target.value)}
+          onBlur={handleSaveNote}
+          className="min-h-[100px] resize-y"
+          disabled={savingNote}
+        />
       </Card>
 
       <Card className="p-5 space-y-3">

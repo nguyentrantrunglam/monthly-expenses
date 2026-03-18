@@ -9,6 +9,7 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
+  updateDoc,
   writeBatch,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase/client";
@@ -30,6 +31,7 @@ export interface Family {
   cycleDay: number;
   createdBy: string;
   members: Record<string, FamilyMember>;
+  sharedNote?: string;
 }
 
 export function useFamily() {
@@ -59,6 +61,7 @@ export function useFamily() {
             cycleDay: data.cycleDay,
             createdBy: data.createdBy,
             members: data.members ?? {},
+            sharedNote: data.sharedNote ?? "",
           });
         }
         setLoading(false);
@@ -167,6 +170,13 @@ export function useFamily() {
     await batch.commit();
   };
 
+  const updateSharedNote = async (note: string) => {
+    if (!user?.familyId) throw new Error("Chưa có gia đình");
+    const db = getFirestoreDb();
+    const ref = doc(db, "families", user.familyId);
+    await updateDoc(ref, { sharedNote: note });
+  };
+
   const removeMember = async (memberId: string) => {
     if (!user || !user.familyId || !family) throw new Error("Không có gia đình");
     if (family.createdBy !== user.uid) throw new Error("Chỉ owner mới xóa thành viên");
@@ -191,6 +201,7 @@ export function useFamily() {
     createInvite,
     deleteFamily,
     removeMember,
+    updateSharedNote,
   };
 }
 
