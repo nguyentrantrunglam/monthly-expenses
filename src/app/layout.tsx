@@ -3,6 +3,7 @@ import "./globals.css";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { QueryProvider } from "@/components/providers/query-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
@@ -24,10 +25,12 @@ export default function RootLayout({
       className={cn("font-sans", geist.variable)}
     >
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <AuthProvider>
-          {children}
-          <Toaster richColors position="bottom-right" />
-        </AuthProvider>
+        <QueryProvider>
+          <AuthProvider>
+            {children}
+            <Toaster richColors position="bottom-right" />
+          </AuthProvider>
+        </QueryProvider>
       </body>
     </html>
   );

@@ -19,6 +19,7 @@ import {
 import {
   LayoutDashboard,
   CalendarRange,
+  CalendarDays,
   Receipt,
   PiggyBank,
   UserCog,
@@ -86,6 +87,12 @@ const navGroups: NavGroup[] = [
         href: "/notes",
         label: "Ghi chú chung",
         icon: <StickyNote className="h-4 w-4" />,
+        requiresFamily: true,
+      },
+      {
+        href: "/calendar",
+        label: "Lịch gia đình",
+        icon: <CalendarDays className="h-4 w-4" />,
         requiresFamily: true,
       },
     ],
