@@ -1,6 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useFamily } from "@/hooks/useFamily";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { Card } from "@/components/ui/card";
@@ -12,6 +22,7 @@ import { UserMinus } from "lucide-react";
 export default function FamilySettingsPage() {
   const { family, createFamily, createInvite, deleteFamily, removeMember, loading } = useFamily();
   const user = useAuthStore((s) => s.user);
+  const router = useRouter();
   const [name, setName] = useState("");
   const [cycleDay, setCycleDay] = useState("1");
   const [inviteEmail, setInviteEmail] = useState("");
@@ -20,6 +31,7 @@ export default function FamilySettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [removingMember, setRemovingMember] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const handleCreateFamily = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,6 +40,7 @@ export default function FamilySettingsPage() {
     try {
       await createFamily(name.trim(), Number(cycleDay) || 1);
       setName("");
+      router.refresh();
     } catch (err) {
       console.error(err);
       setError("Không tạo được gia đình. Vui lòng thử lại.");
@@ -222,27 +235,67 @@ export default function FamilySettingsPage() {
             mời, và gỡ liên kết tất cả thành viên. Hành động này không thể hoàn
             tác.
           </p>
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={deleting}
-            onClick={async () => {
-              const confirmed = prompt(
-                `Nhập "${family.name}" để xác nhận xóa gia đình:`
-              );
-              if (confirmed !== family.name) return;
-              setDeleting(true);
-              try {
-                await deleteFamily();
-              } catch (err: unknown) {
-                console.error(err);
-                setError(err instanceof Error ? err.message : "Không xóa được gia đình.");
-                setDeleting(false);
-              }
-            }}
-          >
-            {deleting ? "Đang xóa..." : "Xóa gia đình"}
-          </Button>
+
+          <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+            <DialogTrigger asChild>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleting}
+              >
+                {deleting ? "Đang xóa..." : "Xóa gia đình"}
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Xóa gia đình?</DialogTitle>
+                <DialogDescription className="text-xs">
+                  Hành động này sẽ xóa toàn bộ dữ liệu liên quan đến gia đình{" "}
+                  <span className="font-semibold text-foreground">
+                    {family.name}
+                  </span>{" "}
+                  và không thể hoàn tác. Tất cả thành viên sẽ mất quyền truy cập.
+                </DialogDescription>
+              </DialogHeader>
+              <p className="text-xs text-muted-foreground">
+                Bạn chắc chắn muốn tiếp tục?
+              </p>
+              <DialogFooter className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDeleteDialog(false)}
+                >
+                  Hủy
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={deleting}
+                  onClick={async () => {
+                    setDeleting(true);
+                    try {
+                      await deleteFamily();
+                      setShowDeleteDialog(false);
+                      router.refresh();
+                    } catch (err: unknown) {
+                      console.error(err);
+                      setError(
+                        err instanceof Error
+                          ? err.message
+                          : "Không xóa được gia đình.",
+                      );
+                      setDeleting(false);
+                    }
+                  }}
+                >
+                  Tôi hiểu, hãy xóa
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </Card>
       )}
     </div>

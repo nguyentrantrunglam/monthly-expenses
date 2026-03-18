@@ -34,6 +34,8 @@ export default function AllocationPage() {
   const [items, setItems] = useState<AllocationItem[]>([]);
   const [seeded, setSeeded] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingsInput, setSavingsInput] = useState(0);
+  const [savingsTouched, setSavingsTouched] = useState(false);
 
   const [sessionMonth, setSessionMonth] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<
@@ -128,6 +130,7 @@ export default function AllocationPage() {
         }
       }
       setItems(saved);
+      setSavingsInput(allocation.savingsAmount ?? 0);
       setSeeded(true);
       return;
     }
@@ -146,9 +149,10 @@ export default function AllocationPage() {
         amount: 0,
       });
       setItems(initial);
+      setSavingsInput(remainingBudget);
       setSeeded(true);
     }
-  }, [allocation, loading, family, user, seeded]);
+  }, [allocation, loading, family, user, seeded, remainingBudget]);
 
   // When family members change after initial seed, merge new members
   useEffect(() => {
@@ -177,8 +181,9 @@ export default function AllocationPage() {
   }, [family, seeded]);
 
   const totalAllocated = items.reduce((s, i) => s + i.amount, 0);
-  const savingsAmount = Math.max(0, remainingBudget - totalAllocated);
-  const overBudget = totalAllocated > remainingBudget;
+  const suggestedSavings = Math.max(0, remainingBudget - totalAllocated);
+  const effectiveSavings = savingsTouched ? savingsInput : suggestedSavings;
+  const overBudget = totalAllocated + effectiveSavings > remainingBudget;
 
   const handleSlider = (index: number, value: number) => {
     const next = [...items];
@@ -190,7 +195,8 @@ export default function AllocationPage() {
     if (overBudget) return;
     setSaving(true);
     try {
-      await saveAllocation(items);
+      await saveAllocation(items, effectiveSavings);
+      router.push("/savings");
     } finally {
       setSaving(false);
     }
@@ -314,13 +320,22 @@ export default function AllocationPage() {
             {fmt(totalAllocated)} đ
           </span>
         </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">
-            Tự động vào quỹ tiết kiệm:
-          </span>
-          <span className="font-semibold text-teal-600">
-            {fmt(savingsAmount)} đ
-          </span>
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <span className="text-muted-foreground">Gửi vào quỹ tiết kiệm:</span>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              className="h-7 text-xs w-36"
+              value={effectiveSavings}
+              onChange={(e) => {
+                setSavingsTouched(true);
+                setSavingsInput(Number(e.target.value) || 0);
+              }}
+            />
+            <span className="text-[11px] text-muted-foreground">
+              Gợi ý: {fmt(suggestedSavings)} đ
+            </span>
+          </div>
         </div>
         {overBudget && (
           <p className="text-xs text-destructive">

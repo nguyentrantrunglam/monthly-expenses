@@ -81,7 +81,7 @@ export function useAllocation(sessionId: string) {
     };
   }, [user?.familyId, sessionId]);
 
-  const saveAllocation = async (items: AllocationItem[]) => {
+  const saveAllocation = async (items: AllocationItem[], savingsAmountInput: number) => {
     if (!user?.familyId) return;
     const db = getFirestoreDb();
     const allocRef = doc(
@@ -94,7 +94,8 @@ export function useAllocation(sessionId: string) {
       "main"
     );
     const totalAllocated = items.reduce((s, i) => s + i.amount, 0);
-    const savingsAmount = Math.max(0, remainingBudget - totalAllocated);
+    const maxPossible = Math.max(0, remainingBudget - totalAllocated);
+    const savingsAmount = Math.max(0, Math.min(savingsAmountInput, remainingBudget));
 
     await setDoc(allocRef, {
       items,
@@ -112,6 +113,7 @@ export function useAllocation(sessionId: string) {
     if (savingsSnap.exists()) {
       const existing = savingsSnap.data();
       const deposits: SavingsDeposit[] = existing.deposits ?? [];
+      const withdrawals: { amount: number }[] = existing.withdrawals ?? [];
       const idx = deposits.findIndex((d) => d.sessionId === sessionId);
       if (idx >= 0) {
         deposits[idx] = {
@@ -127,7 +129,9 @@ export function useAllocation(sessionId: string) {
           createdAt: new Date(),
         });
       }
-      const balance = deposits.reduce((s, d) => s + d.amount, 0);
+      const depositsTotal = deposits.reduce((s, d) => s + d.amount, 0);
+      const withdrawalsTotal = withdrawals.reduce((s, w) => s + (w.amount ?? 0), 0);
+      const balance = depositsTotal - withdrawalsTotal;
       await updateDoc(savingsRef, { balance, deposits });
     } else {
       await setDoc(savingsRef, {

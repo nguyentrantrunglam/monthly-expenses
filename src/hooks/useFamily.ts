@@ -100,6 +100,19 @@ export function useFamily() {
       },
       { merge: true }
     );
+
+    // Cập nhật ngay local auth store để UI phản ứng mà không cần reload
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    Promise.resolve().then(() => {
+      const current = useAuthStore.getState().user;
+      if (current?.uid === user.uid) {
+        useAuthStore.setState({
+          user: { ...current, familyId },
+        });
+      }
+    });
+
+    return familyId;
   };
 
   const createInvite = async (email: string) => {

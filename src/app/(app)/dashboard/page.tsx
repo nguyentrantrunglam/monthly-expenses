@@ -62,22 +62,53 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {quickLinks.map((link) => (
-          <Link key={link.href} href={link.href}>
+      {family ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {quickLinks.map((link) => (
+            <Link key={link.href} href={link.href}>
+              <Card className="group flex flex-row items-center gap-4 overflow-hidden rounded-xl p-5 text-sm transition-colors hover:bg-muted/5">
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${link.color}`}>
+                  <link.icon className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-sm font-semibold">{link.label}</p>
+                  <p className="text-xs text-muted-foreground">{link.desc}</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
+              </Card>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Link href="/settings/family">
             <Card className="group flex flex-row items-center gap-4 overflow-hidden rounded-xl p-5 text-sm transition-colors hover:bg-muted/5">
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${link.color}`}>
-                <link.icon className="h-5 w-5" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-400">
+                <Users className="h-5 w-5" />
               </div>
               <div className="flex-1 min-w-0 text-left">
-                <p className="text-sm font-semibold">{link.label}</p>
-                <p className="text-xs text-muted-foreground">{link.desc}</p>
+                <p className="text-sm font-semibold">Tạo gia đình mới</p>
+                <p className="text-xs text-muted-foreground">
+                  Tạo một gia đình để bắt đầu quản lý thu chi chung.
+                </p>
               </div>
               <ArrowRight className="h-4 w-4 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
             </Card>
           </Link>
-        ))}
-      </div>
+
+          <Card className="flex flex-row items-center gap-4 overflow-hidden rounded-xl p-5 text-sm">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400">
+              <Users className="h-5 w-5" />
+            </div>
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-sm font-semibold">Tham gia gia đình có sẵn</p>
+              <p className="text-xs text-muted-foreground">
+                Nếu người khác mời bạn, hãy dùng link mời để tham gia gia đình của họ.
+              </p>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

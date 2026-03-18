@@ -23,6 +23,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase/client";
+import { getFixedItemDisplayTitle } from "@/lib/utils";
 import { Wallet, Scale } from "lucide-react";
 
 function fmt(n: number) {
@@ -149,7 +150,7 @@ export default function SessionDetailPage() {
       .filter((fi) => fi.isActive && !existingIds.has(fi.id))
       .map((fi) => ({
         fixedItemId: fi.id,
-        title: fi.title,
+        title: getFixedItemDisplayTitle(fi),
         amount: fi.amount,
         action: "skip" as const,
         column: "personal" as const,
@@ -223,18 +224,18 @@ export default function SessionDetailPage() {
 
   const handleLock = async () => {
     if (!user?.familyId || !session) return;
-    const pendingMembers = Object.entries(session.memberStatus)
-      .filter(([, v]) => v !== "done")
-      .map(([uid]) => family?.members[uid]?.name || uid.slice(0, 8));
-    const msg = pendingMembers.length > 0
-      ? `Chốt session? Còn ${pendingMembers.length} thành viên chưa xác nhận (${pendingMembers.join(", ")}).`
-      : "Chốt session?";
-    if (!confirm(msg)) return;
+    if (!confirm("Chốt session? Tất cả thành viên sẽ được đánh dấu là đã hoàn thành."))
+      return;
     const db = getFirestoreDb();
     const ref = doc(db, "families", user.familyId, "sessions", sessionId);
+    const allDone: Record<string, "done"> = {};
+    for (const uid of Object.keys(session.memberStatus)) {
+      allDone[uid] = "done";
+    }
     await updateDoc(ref, {
       status: "locked",
       lockedAt: serverTimestamp(),
+      memberStatus: allDone,
     });
   };
 

@@ -29,6 +29,8 @@ export interface FixedItem {
   dayOfMonth: number | null;
   tag: "personal" | "shared";
   isActive: boolean;
+  /** Có phải khoản trả góp không */
+  isInstallment?: boolean;
 }
 
 export interface FixedItemCategoryMeta {
@@ -84,6 +86,7 @@ export function useFixedItems() {
             dayOfMonth: data.dayOfMonth ?? null,
             tag: data.tag ?? "personal",
             isActive: data.isActive ?? true,
+            isInstallment: data.isInstallment ?? false,
           });
         });
         setItems(next);
@@ -125,6 +128,7 @@ export function useFixedItems() {
     category: FixedItemCategory;
     categoryName: string | null;
     dayOfMonth: number | null;
+    isInstallment?: boolean;
   }) => {
     if (!user?.familyId || !user.uid) {
       throw new Error("Chưa có gia đình hoặc user.");
@@ -146,6 +150,7 @@ export function useFixedItems() {
       dayOfMonth: input.dayOfMonth,
       tag: "personal",
       isActive: true,
+      isInstallment: input.isInstallment ?? false,
       createdAt: new Date(),
     });
   };

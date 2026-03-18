@@ -20,19 +20,27 @@ import {
   LayoutDashboard,
   CalendarRange,
   Receipt,
+  PiggyBank,
   UserCog,
   Users,
   ListChecks,
   LogOut,
   Sun,
   Moon,
-  Monitor,
   ChevronsUpDown,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: ReactNode;
+  requiresFamily?: boolean;
+}
 
 interface NavGroup {
   title: string;
-  items: { href: string; label: string; icon: ReactNode }[];
+  items: NavItem[];
 }
 
 const navGroups: NavGroup[] = [
@@ -53,11 +61,25 @@ const navGroups: NavGroup[] = [
         href: "/session",
         label: "Session tháng",
         icon: <CalendarRange className="h-4 w-4" />,
+        requiresFamily: true,
       },
       {
         href: "/transactions",
         label: "Giao dịch",
         icon: <Receipt className="h-4 w-4" />,
+        requiresFamily: true,
+      },
+      {
+        href: "/savings",
+        label: "Quỹ tiết kiệm",
+        icon: <PiggyBank className="h-4 w-4" />,
+        requiresFamily: true,
+      },
+      {
+        href: "/settings/fixed-items",
+        label: "Khoản cố định",
+        icon: <ListChecks className="h-4 w-4" />,
+        requiresFamily: true,
       },
     ],
   },
@@ -102,13 +124,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         .join("")
         .toUpperCase()
         .slice(0, 2)
-    : user?.email?.slice(0, 2).toUpperCase() ?? "?";
+    : (user?.email?.slice(0, 2).toUpperCase() ?? "?");
 
-  const themeItems = [
-    { value: "light" as const, label: "Sáng", icon: Sun },
-    { value: "dark" as const, label: "Tối", icon: Moon },
-    { value: "system" as const, label: "Hệ thống", icon: Monitor },
-  ];
+  const isDark = theme === "dark";
+  const handleThemeToggle = (checked: boolean) => {
+    setTheme(checked ? "dark" : "light");
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-muted/30">
@@ -131,6 +152,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </p>
               <div className="space-y-0.5">
                 {group.items.map((link) => {
+                  if (link.requiresFamily && !user?.familyId) {
+                    return null;
+                  }
                   const active = pathname.startsWith(link.href);
                   return (
                     <Link
@@ -192,33 +216,40 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <DropdownMenuSeparator />
 
               <DropdownMenuGroup>
-                <DropdownMenuItem onClick={() => router.push("/settings/profile")}>
+                <DropdownMenuItem
+                  onClick={() => router.push("/settings/profile")}
+                >
                   <UserCog className="h-4 w-4" />
                   Hồ sơ cá nhân
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/settings/family")}>
+                <DropdownMenuItem
+                  onClick={() => router.push("/settings/family")}
+                >
                   <Users className="h-4 w-4" />
                   Gia đình
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/settings/fixed-items")}>
-                  <ListChecks className="h-4 w-4" />
-                  Khoản cố định
                 </DropdownMenuItem>
               </DropdownMenuGroup>
 
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Giao diện</DropdownMenuLabel>
-              <DropdownMenuGroup>
-                {themeItems.map((t) => (
-                  <DropdownMenuItem key={t.value} onClick={() => setTheme(t.value)}>
-                    <t.icon className="h-4 w-4" />
-                    {t.label}
-                    {theme === t.value && (
-                      <span className="ml-auto text-xs text-primary">●</span>
-                    )}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
+              <div
+                className="flex items-center justify-between gap-3 px-2 py-1.5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-2 text-sm">
+                  {isDark ? (
+                    <Moon className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Sun className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span>{isDark ? "Tối" : "Sáng"}</span>
+                </div>
+                <Switch
+                  checked={isDark}
+                  onCheckedChange={handleThemeToggle}
+                  aria-label="Chuyển giao diện sáng/tối"
+                />
+              </div>
 
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={handleLogout}>

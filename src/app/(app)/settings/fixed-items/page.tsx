@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   useFixedItems,
   type FixedItemType,
@@ -34,6 +34,25 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { getFixedItemDisplayTitle } from "@/lib/utils";
+import { Plus } from "lucide-react";
+
+const DEFAULT_SOURCE_OPTIONS = [
+  "SC",
+  "HSBC",
+  "Techcombank",
+  "Vietcombank",
+  "TPBank",
+  "SPaylater",
+];
 
 export default function FixedItemsSettingsPage() {
   const {
@@ -51,11 +70,14 @@ export default function FixedItemsSettingsPage() {
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<FixedItemType>("fixed_recurring");
-  const [category, setCategory] = useState<FixedItemCategory>("expense");
+  const [activeTab, setActiveTab] = useState<"all" | FixedItemCategory>("all");
   const [categoryName, setCategoryName] = useState<string>("");
   const [dayOfMonth, setDayOfMonth] = useState<string>("");
+  const [isInstallment, setIsInstallment] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addFormCategory, setAddFormCategory] = useState<FixedItemCategory>("expense");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -65,9 +87,16 @@ export default function FixedItemsSettingsPage() {
     useState<FixedItemCategory>("expense");
   const [editCategoryName, setEditCategoryName] = useState<string>("");
   const [editDay, setEditDay] = useState("");
+  const [editIsInstallment, setEditIsInstallment] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
 
-  const categoryOptions = categories.map((c) => c.name);
+  const categoryOptions = useMemo(() => {
+    const custom = categories.map((c) => c.name);
+    return [
+      ...DEFAULT_SOURCE_OPTIONS,
+      ...custom.filter((n) => !DEFAULT_SOURCE_OPTIONS.includes(n)),
+    ];
+  }, [categories]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,14 +115,17 @@ export default function FixedItemsSettingsPage() {
         title: title.trim(),
         amount: parsedAmount,
         type,
-        category,
+        category: addFormCategory,
         categoryName: categoryName.trim() || null,
         dayOfMonth: parsedDay,
+        isInstallment: addFormCategory === "expense" ? isInstallment : false,
       });
       setTitle("");
       setAmount("");
       setCategoryName("");
       setDayOfMonth("");
+      setIsInstallment(false);
+      setShowAddModal(false);
     } catch (err) {
       console.error(err);
       setFormError("Không lưu được khoản cố định. Vui lòng thử lại.");
@@ -110,6 +142,7 @@ export default function FixedItemsSettingsPage() {
     setEditCategory(item.category);
     setEditCategoryName(item.categoryName ?? "");
     setEditDay(item.dayOfMonth ? String(item.dayOfMonth) : "");
+    setEditIsInstallment(item.isInstallment ?? false);
   };
 
   const cancelEdit = () => {
@@ -131,6 +164,7 @@ export default function FixedItemsSettingsPage() {
         category: editCategory,
         categoryName: editCategoryName.trim() || null,
         dayOfMonth: parsedDay,
+        isInstallment: editCategory === "expense" ? editIsInstallment : false,
       });
       setEditingId(null);
     } catch (err) {
@@ -153,107 +187,207 @@ export default function FixedItemsSettingsPage() {
       </div>
 
       <Card className="p-5 space-y-4">
-        <h2 className="text-sm font-semibold">Thêm khoản cố định mới</h2>
-        <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-5">
-          <div className="md:col-span-2 space-y-1.5">
-            <Label>Tên khoản</Label>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ví dụ: Trả góp, Lương..."
-              required
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Số tiền (VND)</Label>
-            <Input
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="5000000"
-              inputMode="numeric"
-              required
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Danh mục</Label>
-            <Select
-              value={categoryName || "__none__"}
-              onValueChange={(v) =>
-                setCategoryName(v === "__none__" ? "" : v)
-              }
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <h2 className="text-sm font-semibold">
+            Danh sách khoản cố định của bạn
+          </h2>
+          <div className="flex items-center gap-2">
+            <Dialog open={showAddModal} onOpenChange={(open) => {
+              setShowAddModal(open);
+              if (!open) setFormError(null);
+              if (open) setAddFormCategory(activeTab === "all" ? "expense" : activeTab);
+            }}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="gap-1.5">
+                  <Plus className="h-4 w-4" />
+                  Thêm khoản
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-6">
+                <DialogHeader>
+                  <DialogTitle>Thêm khoản cố định mới</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+                  <div className="inline-flex rounded-lg border bg-muted/50 p-1 text-xs mb-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddFormCategory("income");
+                        setIsInstallment(false);
+                      }}
+                      className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+                        addFormCategory === "income"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      Thu nhập
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddFormCategory("expense")}
+                      className={`ml-1 px-3 py-1.5 rounded-md font-medium transition-colors ${
+                        addFormCategory === "expense"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      Chi phí
+                    </button>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2 space-y-1.5">
+                      <Label>Tên khoản</Label>
+                      <Input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder={addFormCategory === "income" ? "Ví dụ: Lương, Thu nhập phụ..." : "Ví dụ: Trả góp, Tiền nhà..."}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Số tiền (VND)</Label>
+                      <Input
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        placeholder="5000000"
+                        inputMode="numeric"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Nguồn tiền</Label>
+                      <Select
+                        value={categoryName || "__none__"}
+                        onValueChange={(v) =>
+                          setCategoryName(v === "__none__" ? "" : v)
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Chọn nguồn tiền" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Không chọn</SelectItem>
+                          {categoryOptions.map((c) => (
+                            <SelectItem key={c} value={c}>
+                              {c}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Loại</Label>
+                      <Select value={type} onValueChange={(v) => setType(v as FixedItemType)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="fixed_recurring">Lặp lại hàng tháng</SelectItem>
+                          <SelectItem value="variable_bill">Hóa đơn biến đổi</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="whitespace-nowrap">Ngày trong tháng (tùy chọn)</Label>
+                      <Input
+                        value={dayOfMonth}
+                        onChange={(e) => setDayOfMonth(e.target.value)}
+                        placeholder="1-31"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    {addFormCategory === "expense" && (
+                      <div className="space-y-1.5 flex items-center gap-3">
+                        <Label htmlFor="modal-is-installment" className="cursor-pointer">
+                          Trả góp
+                        </Label>
+                        <Switch
+                          id="modal-is-installment"
+                          checked={isInstallment}
+                          onCheckedChange={setIsInstallment}
+                          aria-label="Có phải khoản trả góp không"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {formError && (
+                    <p className="text-xs text-destructive">{formError}</p>
+                  )}
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowAddModal(false)}
+                    >
+                      Hủy
+                    </Button>
+                    <Button type="submit" disabled={submitting}>
+                      {submitting ? "Đang lưu..." : "Lưu khoản cố định"}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+            <div className="inline-flex rounded-lg border bg-muted/50 p-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setActiveTab("all")}
+              className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+                activeTab === "all"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted"
+              }`}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Chọn danh mục" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Không chọn</SelectItem>
-                {categoryOptions.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              Tất cả
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("income");
+                setEditingId(null);
+              }}
+              className={`ml-1 px-3 py-1.5 rounded-md font-medium transition-colors ${
+                activeTab === "income"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              Thu nhập
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("expense");
+                setEditingId(null);
+              }}
+              className={`ml-1 px-3 py-1.5 rounded-md font-medium transition-colors ${
+                activeTab === "expense"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              Chi phí
+            </button>
           </div>
-          <div className="space-y-1.5">
-            <Label>Phân loại</Label>
-            <Select value={category} onValueChange={(v) => setCategory(v as FixedItemCategory)}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="expense">Chi phí</SelectItem>
-                <SelectItem value="income">Thu nhập</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label>Loại</Label>
-            <Select value={type} onValueChange={(v) => setType(v as FixedItemType)}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="fixed_recurring">Lặp lại hàng tháng</SelectItem>
-                <SelectItem value="variable_bill">Hóa đơn biến đổi</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Ngày trong tháng (tùy chọn)</Label>
-            <Input
-              value={dayOfMonth}
-              onChange={(e) => setDayOfMonth(e.target.value)}
-              placeholder="1-31"
-              inputMode="numeric"
-            />
-          </div>
-          {formError && (
-            <p className="md:col-span-5 text-xs text-destructive">
-              {formError}
-            </p>
-          )}
-          <div className="md:col-span-5 flex justify-end">
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Đang lưu..." : "Lưu khoản cố định"}
-            </Button>
-          </div>
-        </form>
-      </Card>
-
-      <Card className="p-5 space-y-4">
-        <h2 className="text-sm font-semibold">
-          Danh sách khoản cố định của bạn
-        </h2>
+        </div>
         {loading ? (
           <p className="text-sm text-muted-foreground">Đang tải...</p>
-        ) : items.length === 0 ? (
+        ) : (activeTab === "all" ? items : items.filter((i) => i.category === activeTab)).length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Bạn chưa có khoản cố định nào.
+            {activeTab === "all"
+              ? "Chưa có khoản cố định nào."
+              : activeTab === "income"
+                ? "Chưa có khoản thu nhập cố định."
+                : "Chưa có khoản chi phí cố định."}
           </p>
         ) : (
           <FixedItemsTable
-            items={items}
+            key={activeTab}
+            items={activeTab === "all" ? items : items.filter((i) => i.category === activeTab)}
+            showInstallmentColumn={activeTab === "expense" || activeTab === "all"}
+            showCategoryColumn={activeTab === "all"}
             editingId={editingId}
             editTitle={editTitle}
             setEditTitle={setEditTitle}
@@ -267,6 +401,8 @@ export default function FixedItemsSettingsPage() {
             setEditType={setEditType}
             editDay={editDay}
             setEditDay={setEditDay}
+            editIsInstallment={editIsInstallment}
+            setEditIsInstallment={setEditIsInstallment}
             editSaving={editSaving}
             saveEdit={saveEdit}
             cancelEdit={cancelEdit}
@@ -280,9 +416,9 @@ export default function FixedItemsSettingsPage() {
       </Card>
 
       <Card className="p-5 space-y-4">
-        <h2 className="text-sm font-semibold">Danh mục khoản cố định</h2>
+        <h2 className="text-sm font-semibold">Nguồn tiền khoản cố định</h2>
         <p className="text-xs text-muted-foreground">
-          Dùng để gán nhanh cho các khoản cố định (ví dụ: Tiền nhà, Ăn uống...).
+          {`Đã có sẵn: ${DEFAULT_SOURCE_OPTIONS.join(", ")}. Bạn có thể thêm nguồn tiền khác.`}
         </p>
         <CategoryManager
           categories={categories}
@@ -312,6 +448,8 @@ function FixedItemsTable({
   setEditType,
   editDay,
   setEditDay,
+  editIsInstallment,
+  setEditIsInstallment,
   editSaving,
   saveEdit,
   cancelEdit,
@@ -319,6 +457,8 @@ function FixedItemsTable({
   deleteItem,
   updateItem,
   categoryOptions,
+  showInstallmentColumn = true,
+  showCategoryColumn = false,
 }: {
   items: FixedItem[];
   editingId: string | null;
@@ -334,6 +474,8 @@ function FixedItemsTable({
   setEditType: (v: FixedItemType) => void;
   editDay: string;
   setEditDay: (v: string) => void;
+  editIsInstallment: boolean;
+  setEditIsInstallment: (v: boolean) => void;
   editSaving: boolean;
   saveEdit: () => void;
   cancelEdit: () => void;
@@ -341,6 +483,8 @@ function FixedItemsTable({
   deleteItem: (id: string) => Promise<void>;
   updateItem: (id: string, data: Partial<FixedItem>) => Promise<void>;
   categoryOptions: string[];
+  showInstallmentColumn?: boolean;
+  showCategoryColumn?: boolean;
 }) {
   const [page, setPage] = useState(1);
   const pageCount = Math.max(1, Math.ceil(items.length / FIXED_PAGE_SIZE));
@@ -356,10 +500,15 @@ function FixedItemsTable({
           <TableRow>
             <TableHead className="text-xs">Tên</TableHead>
             <TableHead className="text-xs">Số tiền</TableHead>
-            <TableHead className="text-xs">Danh mục</TableHead>
-            <TableHead className="text-xs">Thu / chi</TableHead>
+            <TableHead className="text-xs">Nguồn tiền</TableHead>
+            {showCategoryColumn && (
+              <TableHead className="text-xs">Thu / chi</TableHead>
+            )}
             <TableHead className="text-xs">Loại</TableHead>
             <TableHead className="text-xs">Ngày</TableHead>
+            {showInstallmentColumn && (
+              <TableHead className="text-xs">Trả góp</TableHead>
+            )}
             <TableHead className="text-xs">Trạng thái</TableHead>
             <TableHead className="text-xs text-right">Hành động</TableHead>
           </TableRow>
@@ -403,22 +552,24 @@ function FixedItemsTable({
                     </SelectContent>
                   </Select>
                 </TableCell>
-                <TableCell>
-                  <Select
-                    value={editCategory}
-                    onValueChange={(v) =>
-                      setEditCategory(v as FixedItemCategory)
-                    }
-                  >
-                    <SelectTrigger size="sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="expense">Chi phí</SelectItem>
-                      <SelectItem value="income">Thu nhập</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </TableCell>
+                {showCategoryColumn && (
+                  <TableCell>
+                    <Select
+                      value={editCategory}
+                      onValueChange={(v) =>
+                        setEditCategory(v as FixedItemCategory)
+                      }
+                    >
+                      <SelectTrigger size="sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="expense">Chi phí</SelectItem>
+                        <SelectItem value="income">Thu nhập</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                )}
                 <TableCell>
                   <Select
                     value={editType}
@@ -442,6 +593,16 @@ function FixedItemsTable({
                     onChange={(e) => setEditDay(e.target.value)}
                   />
                 </TableCell>
+                {showInstallmentColumn && (
+                  <TableCell>
+                    <Switch
+                      checked={editIsInstallment}
+                      onCheckedChange={setEditIsInstallment}
+                      size="sm"
+                      aria-label="Trả góp"
+                    />
+                  </TableCell>
+                )}
                 <TableCell className="text-xs text-muted-foreground">
                   {item.isActive ? "Đang dùng" : "Tạm tắt"}
                 </TableCell>
@@ -465,7 +626,7 @@ function FixedItemsTable({
               </TableRow>
             ) : (
               <TableRow key={item.id}>
-                <TableCell>{item.title}</TableCell>
+                <TableCell>{getFixedItemDisplayTitle(item)}</TableCell>
                 <TableCell>
                   {new Intl.NumberFormat("vi-VN").format(item.amount)} đ
                 </TableCell>
@@ -474,17 +635,19 @@ function FixedItemsTable({
                     <span className="text-xs text-muted-foreground">-</span>
                   )}
                 </TableCell>
-                <TableCell>
-                  <span
-                    className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                      item.category === "income"
-                        ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
-                        : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
-                    }`}
-                  >
-                    {item.category === "income" ? "Thu nhập" : "Chi phí"}
-                  </span>
-                </TableCell>
+                {showCategoryColumn && (
+                  <TableCell>
+                    <span
+                      className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                        item.category === "income"
+                          ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+                          : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
+                      }`}
+                    >
+                      {item.category === "income" ? "Thu nhập" : "Chi phí"}
+                    </span>
+                  </TableCell>
+                )}
                 <TableCell>
                   {item.type === "fixed_recurring"
                     ? "Lặp lại"
@@ -493,6 +656,15 @@ function FixedItemsTable({
                 <TableCell>
                   {item.dayOfMonth ? `Ngày ${item.dayOfMonth}` : "-"}
                 </TableCell>
+                {showInstallmentColumn && (
+                  <TableCell>
+                    {item.isInstallment ? (
+                      <span className="text-[10px] text-muted-foreground">Có</span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                )}
                 <TableCell>
                   <button
                     type="button"
@@ -608,7 +780,7 @@ function CategoryManager({
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Thêm danh mục mới (vd: Tiền nhà)"
+          placeholder="Thêm nguồn tiền mới (vd: Lương, Tiền nhà)"
         />
         <Button type="submit" size="sm" disabled={saving || !name.trim()}>
           {saving ? "Đang lưu..." : "Thêm"}
@@ -617,8 +789,7 @@ function CategoryManager({
 
       {categories.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          Chưa có danh mục nào. Hãy thêm ít nhất 1 danh mục để dùng cho khoản
-          cố định.
+          Chưa có nguồn tiền tùy chỉnh. Thêm nguồn tiền khác nếu cần.
         </p>
       ) : (
         <div className="flex flex-wrap gap-2">
@@ -634,7 +805,7 @@ function CategoryManager({
                 onClick={() => {
                   if (
                     confirm(
-                      `Xóa danh mục \"${c.name}\"? Các khoản cố định đang dùng danh mục này sẽ không bị xóa.`
+                      `Xóa nguồn tiền \"${c.name}\"? Các khoản cố định đang dùng nguồn tiền này sẽ không bị xóa.`
                     )
                   ) {
                     deleteCategory(c.id);

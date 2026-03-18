@@ -28,6 +28,12 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   CalendarRange,
   Plus,
   Lock,
@@ -89,6 +95,22 @@ export default function SessionListPage() {
         family.createdBy === user.uid
       : false;
 
+  if (!user?.familyId || !family) {
+    return (
+      <Card className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+          <CalendarRange className="h-7 w-7 text-muted-foreground/50" />
+        </div>
+        <div>
+          <p className="font-medium">Chưa có gia đình</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Bạn cần tạo hoặc tham gia một gia đình trước khi sử dụng chức năng session tháng.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -110,19 +132,23 @@ export default function SessionListPage() {
         )}
       </div>
 
-      {showCreate && family && user && (
-        <CreateSessionForm
-          familyMembers={Object.keys(family.members)}
-          lastSession={sessions.length > 0 ? sessions[0] : null}
-          onCreated={(id) => {
-            setShowCreate(false);
-            router.push(`/session/${id}`);
-          }}
-          onCancel={() => setShowCreate(false)}
-          createSession={createSession}
-          userId={user.uid}
-        />
-      )}
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-6">
+          {family && user && (
+            <CreateSessionForm
+              familyMembers={Object.keys(family.members)}
+              lastSession={sessions.length > 0 ? sessions[0] : null}
+              onCreated={(id) => {
+                setShowCreate(false);
+                router.push(`/session/${id}`);
+              }}
+              onCancel={() => setShowCreate(false)}
+              createSession={createSession}
+              userId={user.uid}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -471,66 +497,74 @@ function CreateSessionForm({
   };
 
   return (
-    <Card className="p-5 space-y-5">
-      <h2 className="text-base font-semibold">Tạo session mới</h2>
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="space-y-1.5">
+    <>
+      <DialogHeader>
+        <DialogTitle>Tạo session mới</DialogTitle>
+      </DialogHeader>
+      <form onSubmit={handleSubmit} className="space-y-6 mt-4">
+        <div className="space-y-2">
           <Label>Tháng</Label>
           <MonthPicker value={month} onChange={setMonth} />
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-baseline justify-between">
-            <p className="text-xs font-medium">
-              Thu nhập
-            </p>
+        <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <Label className="text-foreground">Thu nhập</Label>
             {lastSession && lastSession.incomeItems.length > 0 && (
-              <p className="text-[10px] text-muted-foreground">
-                Lấy từ session {monthLabel(lastSession.month)}
-              </p>
+              <span className="text-[11px] text-muted-foreground shrink-0">
+                Lấy từ {monthLabel(lastSession.month)}
+              </span>
             )}
           </div>
-          {incomeRows.map((row, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <Input
-                className="flex-1"
-                placeholder="Tên khoản thu"
-                value={row.label}
-                onChange={(e) => {
-                  const copy = [...incomeRows];
-                  copy[i] = { ...copy[i], label: e.target.value };
-                  setIncomeRows(copy);
-                }}
-              />
-              <Input
-                className="w-36"
-                placeholder="Số tiền"
-                inputMode="numeric"
-                value={row.amount || ""}
-                onChange={(e) => {
-                  const copy = [...incomeRows];
-                  copy[i] = {
-                    ...copy[i],
-                    amount: Number(e.target.value.replace(/\D/g, "")) || 0,
-                  };
-                  setIncomeRows(copy);
-                }}
-              />
-              {incomeRows.length > 1 && (
-                <button
-                  type="button"
-                  className="shrink-0 rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-destructive dark:hover:bg-red-950"
-                  onClick={() => setIncomeRows(incomeRows.filter((_, j) => j !== i))}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          ))}
+          <div className="space-y-2">
+            {incomeRows.map((row, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input
+                  className="flex-1 min-w-0"
+                  placeholder="Tên khoản thu"
+                  value={row.label}
+                  onChange={(e) => {
+                    const copy = [...incomeRows];
+                    copy[i] = { ...copy[i], label: e.target.value };
+                    setIncomeRows(copy);
+                  }}
+                />
+                <Input
+                  className="w-28 shrink-0"
+                  placeholder="Số tiền"
+                  inputMode="numeric"
+                  value={row.amount || ""}
+                  onChange={(e) => {
+                    const copy = [...incomeRows];
+                    copy[i] = {
+                      ...copy[i],
+                      amount: Number(e.target.value.replace(/\D/g, "")) || 0,
+                    };
+                    setIncomeRows(copy);
+                  }}
+                />
+                {incomeRows.length > 1 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => setIncomeRows(incomeRows.filter((_, j) => j !== i))}
+                    aria-label="Xóa khoản thu"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                ) : (
+                  <div className="w-7 shrink-0" aria-hidden />
+                )}
+              </div>
+            ))}
+          </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
+            className="w-full border-dashed border-muted-foreground/40 hover:border-muted-foreground/60 hover:bg-muted/50"
             onClick={() =>
               setIncomeRows([
                 ...incomeRows,
@@ -542,56 +576,60 @@ function CreateSessionForm({
           </Button>
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-baseline justify-between">
-            <p className="text-xs font-medium">
-              Chi cố định chung
-            </p>
+        <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <Label className="text-foreground">Chi cố định chung</Label>
             {lastSession && lastSession.sharedExpenses.length > 0 && (
-              <p className="text-[10px] text-muted-foreground">
-                Lấy từ session {monthLabel(lastSession.month)}
-              </p>
+              <span className="text-[11px] text-muted-foreground shrink-0">
+                Lấy từ {monthLabel(lastSession.month)}
+              </span>
             )}
           </div>
-          {expenseRows.map((row, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <Input
-                className="flex-1"
-                placeholder="Tên khoản chi"
-                value={row.title}
-                onChange={(e) => {
-                  const copy = [...expenseRows];
-                  copy[i] = { ...copy[i], title: e.target.value };
-                  setExpenseRows(copy);
-                }}
-              />
-              <Input
-                className="w-36"
-                placeholder="Số tiền"
-                inputMode="numeric"
-                value={row.amount || ""}
-                onChange={(e) => {
-                  const copy = [...expenseRows];
-                  copy[i] = {
-                    ...copy[i],
-                    amount: Number(e.target.value.replace(/\D/g, "")) || 0,
-                  };
-                  setExpenseRows(copy);
-                }}
-              />
-              <button
-                type="button"
-                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-destructive dark:hover:bg-red-950"
-                onClick={() => setExpenseRows(expenseRows.filter((_, j) => j !== i))}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
+          <div className="space-y-2">
+            {expenseRows.map((row, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input
+                  className="flex-1 min-w-0"
+                  placeholder="Tên khoản chi"
+                  value={row.title}
+                  onChange={(e) => {
+                    const copy = [...expenseRows];
+                    copy[i] = { ...copy[i], title: e.target.value };
+                    setExpenseRows(copy);
+                  }}
+                />
+                <Input
+                  className="w-28 shrink-0"
+                  placeholder="Số tiền"
+                  inputMode="numeric"
+                  value={row.amount || ""}
+                  onChange={(e) => {
+                    const copy = [...expenseRows];
+                    copy[i] = {
+                      ...copy[i],
+                      amount: Number(e.target.value.replace(/\D/g, "")) || 0,
+                    };
+                    setExpenseRows(copy);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => setExpenseRows(expenseRows.filter((_, j) => j !== i))}
+                  aria-label="Xóa khoản chi"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
+            className="w-full border-dashed border-muted-foreground/40 hover:border-muted-foreground/60 hover:bg-muted/50"
             onClick={() =>
               setExpenseRows([...expenseRows, { title: "", amount: 0 }])
             }
@@ -600,9 +638,13 @@ function CreateSessionForm({
           </Button>
         </div>
 
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error}
+          </p>
+        )}
 
-        <div className="flex gap-2 justify-end">
+        <div className="flex gap-2 justify-end pt-2 border-t">
           <Button type="button" variant="outline" onClick={onCancel}>
             Hủy
           </Button>
@@ -611,6 +653,6 @@ function CreateSessionForm({
           </Button>
         </div>
       </form>
-    </Card>
+    </>
   );
 }
