@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/ui/date-picker";
+import { CurrencyInput, parseCurrencyInput } from "@/components/ui/currency-input";
 import {
   Table,
   TableBody,
@@ -40,6 +41,13 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Receipt, Plus, Pencil, Trash2, X, Check, Wallet, Scale } from "lucide-react";
 
 const CATEGORIES = [
@@ -66,7 +74,7 @@ export default function TransactionsPage() {
       category: filterCategory || undefined,
     });
 
-  const [showForm, setShowForm] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
@@ -198,7 +206,7 @@ export default function TransactionsPage() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-    const parsed = Number(amount.replace(/\s/g, ""));
+    const parsed = parseCurrencyInput(amount);
     if (!parsed || parsed <= 0) {
       setFormError("Số tiền không hợp lệ.");
       return;
@@ -221,7 +229,7 @@ export default function TransactionsPage() {
       setTitle("");
       setAmount("");
       setNote("");
-      setShowForm(false);
+      setShowAddModal(false);
     } catch (err) {
       console.error(err);
       setFormError("Không lưu được giao dịch.");
@@ -240,7 +248,7 @@ export default function TransactionsPage() {
 
   const saveEdit = async () => {
     if (!editingId) return;
-    const parsed = Number(editAmount.replace(/\s/g, ""));
+    const parsed = parseCurrencyInput(editAmount);
     if (!parsed || parsed <= 0) return;
     setEditSaving(true);
     try {
@@ -348,21 +356,125 @@ export default function TransactionsPage() {
             Ghi chép chi tiêu hàng ngày
           </p>
         </div>
-        <Button
-          size="sm"
-          className="gap-1.5"
-          onClick={() => setShowForm(!showForm)}
-        >
-          {showForm ? (
-            <>
-              <X className="h-4 w-4" /> Đóng
-            </>
-          ) : (
-            <>
+        <Dialog open={showAddModal} onOpenChange={(open) => {
+          setShowAddModal(open);
+          if (!open) setFormError(null);
+        }}>
+          <DialogTrigger asChild>
+            <Button size="sm" className="gap-1.5">
               <Plus className="h-4 w-4" /> Thêm giao dịch
-            </>
-          )}
-        </Button>
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-6">
+            <DialogHeader>
+              <DialogTitle>Thêm giao dịch</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleAdd} className="space-y-3 mt-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Tên giao dịch</Label>
+                  <Input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Ví dụ: Ăn trưa, Mua sữa cho bé..."
+                    required
+                  />
+                  {nameSuggestions.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {nameSuggestions.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
+                          onClick={() => setTitle(name)}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Số tiền (VND)</Label>
+                  <CurrencyInput
+                    value={amount}
+                    onChange={setAmount}
+                    placeholder="100,000"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Danh mục</Label>
+                  <Select value={category} onValueChange={setCategory}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Ngày</Label>
+                  <DatePicker value={date} onChange={setDate} />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Nguồn chi</Label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                        spendingType === "personal"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      }`}
+                      onClick={() => setSpendingType("personal")}
+                    >
+                      Cá nhân
+                    </button>
+                    <button
+                      type="button"
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                        spendingType === "shared_pool"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      }`}
+                      onClick={() => setSpendingType("shared_pool")}
+                    >
+                      Quỹ chung
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Ghi chú</Label>
+                  <Input
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Tùy chọn"
+                  />
+                </div>
+              </div>
+              {formError && (
+                <p className="text-xs text-destructive">{formError}</p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAddModal(false)}
+                >
+                  Hủy
+                </Button>
+                <Button type="submit" size="sm" disabled={submitting}>
+                  {submitting ? "Đang lưu..." : "Lưu giao dịch"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Budget summary — only show when there's an allocation for the active month */}
@@ -480,110 +592,6 @@ export default function TransactionsPage() {
             </Card>
           )}
         </div>
-      )}
-
-      {showForm && (
-        <Card className="p-4 space-y-3">
-          <form onSubmit={handleAdd} className="space-y-3">
-            <div className="grid gap-4 md:grid-cols-4">
-              <div className="space-y-1.5 md:col-span-2">
-                <Label>Tên giao dịch</Label>
-                <Input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Ví dụ: Ăn trưa, Mua sữa cho bé..."
-                  required
-                />
-                {nameSuggestions.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {nameSuggestions.map((name) => (
-                      <button
-                        key={name}
-                        type="button"
-                        className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
-                        onClick={() => setTitle(name)}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label>Số tiền (VND)</Label>
-                <Input
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="100000"
-                  inputMode="numeric"
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Danh mục</Label>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Ngày</Label>
-                <DatePicker value={date} onChange={setDate} />
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Nguồn chi</Label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                      spendingType === "personal"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    }`}
-                    onClick={() => setSpendingType("personal")}
-                  >
-                    Cá nhân
-                  </button>
-                  <button
-                    type="button"
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                      spendingType === "shared_pool"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    }`}
-                    onClick={() => setSpendingType("shared_pool")}
-                  >
-                    Quỹ chung
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Ghi chú</Label>
-                <Input
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Tùy chọn"
-                />
-              </div>
-            </div>
-            {formError && (
-              <p className="text-xs text-destructive">{formError}</p>
-            )}
-            <div className="flex justify-end">
-              <Button type="submit" size="sm" disabled={submitting}>
-                {submitting ? "Đang lưu..." : "Lưu giao dịch"}
-              </Button>
-            </div>
-          </form>
-        </Card>
       )}
 
       {/* Filters & summary */}
@@ -750,15 +758,15 @@ function TransactionsTable({
 
   return (
     <Card className="overflow-hidden">
-      <Table>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-muted/40">
-            <TableHead className="text-xs">Ngày</TableHead>
-            <TableHead className="text-xs">Người chi</TableHead>
-            <TableHead className="text-xs">Danh mục</TableHead>
-            <TableHead className="text-xs">Nguồn</TableHead>
-            <TableHead className="text-xs">Ghi chú</TableHead>
-            <TableHead className="text-xs text-right">Số tiền</TableHead>
+            <TableHead className="text-xs w-24">Ngày</TableHead>
+            <TableHead className="text-xs w-24">Người chi</TableHead>
+            <TableHead className="text-xs w-28">Danh mục</TableHead>
+            <TableHead className="text-xs w-20">Nguồn</TableHead>
+            <TableHead className="text-xs w-[180px]">Ghi chú</TableHead>
+            <TableHead className="text-xs text-right w-28">Số tiền</TableHead>
             <TableHead className="text-xs text-right w-24">Thao tác</TableHead>
           </TableRow>
         </TableHeader>
@@ -789,16 +797,16 @@ function TransactionsTable({
                 <TableCell className="text-xs text-muted-foreground">
                   {tx.spendingType === "shared_pool" ? "Chung" : "Cá nhân"}
                 </TableCell>
-                <TableCell>
-                  <div className="space-y-1">
+                <TableCell className="min-w-0 overflow-hidden">
+                  <div className="flex flex-col gap-1 min-w-0">
                     <Input
-                      className="h-7 text-xs"
+                      className="h-7 text-xs min-w-0 max-w-full"
                       value={editTitle}
                       onChange={(e) => setEditTitle(e.target.value)}
                       placeholder="Tên giao dịch"
                     />
                     <Input
-                      className="h-7 text-xs"
+                      className="h-7 text-xs min-w-0 max-w-full"
                       value={editNote}
                       onChange={(e) => setEditNote(e.target.value)}
                       placeholder="Ghi chú"
@@ -806,11 +814,10 @@ function TransactionsTable({
                   </div>
                 </TableCell>
                 <TableCell className="text-right">
-                  <Input
-                    className="h-7 w-28 text-xs text-right tabular-nums"
-                    inputMode="numeric"
+                  <CurrencyInput
+                    className="h-7 w-full text-xs text-right tabular-nums"
                     value={editAmount}
-                    onChange={(e) => setEditAmount(e.target.value)}
+                    onChange={setEditAmount}
                   />
                 </TableCell>
                 <TableCell className="text-right">
@@ -855,12 +862,12 @@ function TransactionsTable({
                     {tx.spendingType === "shared_pool" ? "Quỹ chung" : "Cá nhân"}
                   </span>
                 </TableCell>
-                <TableCell className="text-xs text-muted-foreground max-w-[260px]">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">
+                <TableCell className="text-xs text-muted-foreground min-w-0 overflow-hidden">
+                  <div className="flex flex-col gap-0.5 min-w-0 truncate">
+                    <span className="font-medium truncate">
                       {tx.title || "(Không có tên)"}
                     </span>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-[11px] text-muted-foreground truncate">
                       {tx.note || "—"}
                     </span>
                   </div>

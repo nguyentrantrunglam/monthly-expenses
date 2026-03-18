@@ -15,6 +15,7 @@ import { useReconcile } from "@/hooks/useReconcile";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput, parseCurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -215,7 +216,7 @@ export default function ReconcilePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const parsed = Number(actual.replace(/\s/g, ""));
+    const parsed = parseCurrencyInput(actual);
     if (Number.isNaN(parsed)) {
       setError("Số dư không hợp lệ.");
       return;
@@ -421,11 +422,10 @@ export default function ReconcilePage() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-1.5">
                       <Label>Số dư thực tế (VND)</Label>
-                      <Input
+                      <CurrencyInput
                         value={actual}
-                        onChange={(e) => setActual(e.target.value)}
+                        onChange={setActual}
                         placeholder="Số tiền thực tế đang có"
-                        inputMode="numeric"
                         required
                       />
                     </div>
@@ -441,19 +441,19 @@ export default function ReconcilePage() {
                   {actual && (
                     <div
                       className={`rounded-lg p-3 text-center text-sm font-medium ${
-                        Number(actual.replace(/\s/g, "")) - remaining === 0
+                        parseCurrencyInput(actual) - remaining === 0
                           ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300"
                           : "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
                       }`}
                     >
-                      {Number(actual.replace(/\s/g, "")) - remaining === 0 ? (
+                      {parseCurrencyInput(actual) - remaining === 0 ? (
                         <span className="inline-flex items-center gap-1">
                           <CheckCircle2 className="h-4 w-4" /> Khớp hoàn toàn!
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1">
                           <AlertTriangle className="h-4 w-4" /> Chênh lệch:{" "}
-                          {fmt(Number(actual.replace(/\s/g, "")) - remaining)} đ
+                          {fmt(parseCurrencyInput(actual) - remaining)} đ
                         </span>
                       )}
                     </div>

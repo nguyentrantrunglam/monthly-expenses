@@ -12,6 +12,7 @@ import {
 import { DroppableColumn } from "./DroppableColumn";
 import { ItemCard } from "./ItemCard";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput, parseCurrencyInput } from "@/components/ui/currency-input";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import type {
@@ -168,7 +169,7 @@ export function SessionBoard({
   const [addType, setAddType] = useState<"income" | "expense">("expense");
 
   const handleQuickAdd = () => {
-    const parsed = Number(addAmount.replace(/\s/g, "")) || 0;
+    const parsed = parseCurrencyInput(addAmount) || 0;
     if (!addTitle.trim() || parsed <= 0) return;
     const newItem: MemberSessionItem = {
       fixedItemId: `_quick_${Date.now()}`,
@@ -282,12 +283,11 @@ export function SessionBoard({
                     autoFocus
                     onKeyDown={(e) => e.key === "Enter" && handleQuickAdd()}
                   />
-                  <Input
+                  <CurrencyInput
                     className="h-7 text-xs"
                     placeholder="Số tiền"
-                    inputMode="numeric"
                     value={addAmount}
-                    onChange={(e) => setAddAmount(e.target.value)}
+                    onChange={setAddAmount}
                     onKeyDown={(e) => e.key === "Enter" && handleQuickAdd()}
                   />
                   <div className="flex gap-1 justify-end">
@@ -511,7 +511,7 @@ function EditableSessionItem({
   const textColor = color === "green" ? "text-green-600" : "text-red-500";
 
   const handleSave = () => {
-    const parsed = Number(editAmount.replace(/\D/g, "")) || 0;
+    const parsed = parseCurrencyInput(editAmount) || 0;
     onSave(editLabel.trim() || label, parsed);
     setEditing(false);
   };
@@ -526,11 +526,10 @@ function EditableSessionItem({
           onKeyDown={(e) => e.key === "Enter" && handleSave()}
           autoFocus
         />
-        <Input
+        <CurrencyInput
           className="h-7 text-xs"
-          inputMode="numeric"
           value={editAmount}
-          onChange={(e) => setEditAmount(e.target.value)}
+          onChange={setEditAmount}
           onKeyDown={(e) => e.key === "Enter" && handleSave()}
         />
         <div className="flex gap-1 justify-end">

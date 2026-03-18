@@ -10,6 +10,7 @@ import { useAuthStore } from "@/lib/stores/authStore";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { MonthPicker } from "@/components/ui/month-picker";
 import {
@@ -529,17 +530,14 @@ function CreateSessionForm({
                     setIncomeRows(copy);
                   }}
                 />
-                <Input
+                <CurrencyInput
                   className="w-28 shrink-0"
                   placeholder="Số tiền"
-                  inputMode="numeric"
                   value={row.amount || ""}
-                  onChange={(e) => {
+                  onChange={() => {}}
+                  onValueChange={(n) => {
                     const copy = [...incomeRows];
-                    copy[i] = {
-                      ...copy[i],
-                      amount: Number(e.target.value.replace(/\D/g, "")) || 0,
-                    };
+                    copy[i] = { ...copy[i], amount: n };
                     setIncomeRows(copy);
                   }}
                 />
@@ -598,17 +596,14 @@ function CreateSessionForm({
                     setExpenseRows(copy);
                   }}
                 />
-                <Input
+                <CurrencyInput
                   className="w-28 shrink-0"
                   placeholder="Số tiền"
-                  inputMode="numeric"
                   value={row.amount || ""}
-                  onChange={(e) => {
+                  onChange={() => {}}
+                  onValueChange={(n) => {
                     const copy = [...expenseRows];
-                    copy[i] = {
-                      ...copy[i],
-                      amount: Number(e.target.value.replace(/\D/g, "")) || 0,
-                    };
+                    copy[i] = { ...copy[i], amount: n };
                     setExpenseRows(copy);
                   }}
                 />

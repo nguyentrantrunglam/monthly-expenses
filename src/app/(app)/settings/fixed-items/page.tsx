@@ -42,7 +42,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { getFixedItemDisplayTitle } from "@/lib/utils";
+import { getFixedItemDisplayTitle, parseCurrencyInput } from "@/lib/utils";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Plus } from "lucide-react";
 
 const DEFAULT_SOURCE_OPTIONS = [
@@ -102,7 +103,7 @@ export default function FixedItemsSettingsPage() {
     e.preventDefault();
     setFormError(null);
     setSubmitting(true);
-    const parsedAmount = Number(amount.replace(/\s/g, ""));
+    const parsedAmount = parseCurrencyInput(amount);
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       setFormError("Số tiền không hợp lệ.");
       setSubmitting(false);
@@ -151,7 +152,7 @@ export default function FixedItemsSettingsPage() {
 
   const saveEdit = async () => {
     if (!editingId) return;
-    const parsedAmount = Number(editAmount.replace(/\s/g, ""));
+    const parsedAmount = parseCurrencyInput(editAmount);
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) return;
     const parsedDay =
       editDay.trim() === "" ? null : Number.parseInt(editDay, 10);
@@ -246,14 +247,13 @@ export default function FixedItemsSettingsPage() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Số tiền (VND)</Label>
-                      <Input
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        placeholder="5000000"
-                        inputMode="numeric"
-                        required
-                      />
+                    <Label>Số tiền (VND)</Label>
+                    <CurrencyInput
+                      value={amount}
+                      onChange={setAmount}
+                      placeholder="5,000,000"
+                      required
+                    />
                     </div>
                     <div className="space-y-1.5">
                       <Label>Nguồn tiền</Label>
@@ -525,11 +525,10 @@ function FixedItemsTable({
                   />
                 </TableCell>
                 <TableCell>
-                  <Input
+                  <CurrencyInput
                     className="h-7 text-xs w-28"
-                    inputMode="numeric"
                     value={editAmount}
-                    onChange={(e) => setEditAmount(e.target.value)}
+                    onChange={setEditAmount}
                   />
                 </TableCell>
                 <TableCell>

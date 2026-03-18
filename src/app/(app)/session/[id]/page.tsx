@@ -24,7 +24,8 @@ import {
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase/client";
 import { getFixedItemDisplayTitle } from "@/lib/utils";
-import { Wallet, Scale } from "lucide-react";
+import { exportSessionPdf } from "@/lib/exportSessionPdf";
+import { Wallet, Scale, FileDown } from "lucide-react";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
@@ -267,6 +268,14 @@ export default function SessionDetailPage() {
   const myStatus = user ? session.memberStatus[user.uid] : "pending";
   const isLocked = session.status === "locked";
   const boardDisabled = isLocked || myStatus === "done";
+  const memberNames = family
+    ? Object.fromEntries(
+        Object.entries(family.members).map(([uid, m]) => [
+          uid,
+          m.name || uid.slice(0, 8),
+        ])
+      )
+    : {};
 
   // Calculate real totals from actual data (session-level + all member items)
   const sessionIncome = session.incomeItems.reduce((s, i) => s + i.amount, 0);
@@ -312,6 +321,29 @@ export default function SessionDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              try {
+                exportSessionPdf({
+                  session,
+                  boardItems,
+                  memberNames,
+                  allMemberItems,
+                  allocationItems,
+                  memberSpending,
+                  totalSharedSpending,
+                });
+              } catch (err) {
+                console.error(err);
+                alert("Không xuất được PDF.");
+              }
+            }}
+            className="gap-1.5"
+          >
+            <FileDown className="h-4 w-4" />
+            Xuất PDF
+          </Button>
           {!isLocked && myStatus !== "done" && (
             <Button onClick={handleConfirm} variant="outline">
               Xác nhận
@@ -365,16 +397,7 @@ export default function SessionDetailPage() {
         onSessionUpdate={isOwner && !isLocked ? handleSessionUpdate : undefined}
         currentUserId={user?.uid ?? ""}
         allMemberItems={allMemberItems}
-        memberNames={
-          family
-            ? Object.fromEntries(
-                Object.entries(family.members).map(([uid, m]) => [
-                  uid,
-                  m.name || uid.slice(0, 8),
-                ])
-              )
-            : {}
-        }
+        memberNames={memberNames}
         isOwner={isOwner}
       />
 

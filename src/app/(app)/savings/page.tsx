@@ -16,6 +16,7 @@ import { getFirestoreDb } from "@/lib/firebase/client";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput, parseCurrencyInput } from "@/components/ui/currency-input";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,6 +26,16 @@ import {
   DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Trash2 } from "lucide-react";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
@@ -34,6 +45,7 @@ interface Deposit {
   month: string;
   amount: number;
   sessionId: string;
+  note?: string;
   createdAt: { toDate?: () => Date } | string;
 }
 
@@ -87,6 +99,7 @@ export default function SavingsPage() {
   const [goldHistory, setGoldHistory] = useState<GoldValuePoint[]>([]);
   const [extraAmount, setExtraAmount] = useState("");
   const [extraNote, setExtraNote] = useState("");
+  const [extraDepositDate, setExtraDepositDate] = useState("");
   const [addingExtra, setAddingExtra] = useState(false);
   const [existingGoldWeight, setExistingGoldWeight] = useState("");
   const [addingExistingGold, setAddingExistingGold] = useState(false);
@@ -199,8 +212,7 @@ export default function SavingsPage() {
     e.preventDefault();
     if (!user?.familyId) return;
     const weight = Number(goldWeight.replace(/\s/g, "").replace(",", ".")) || 0;
-    const pricePerUnit =
-      Number(goldPricePerUnit.replace(/\s/g, "").replace(/,/g, "")) || 0;
+    const pricePerUnit = parseCurrencyInput(goldPricePerUnit) || 0;
     if (!goldDate || weight <= 0 || pricePerUnit <= 0) return;
 
     try {
@@ -228,8 +240,7 @@ export default function SavingsPage() {
     if (!user?.familyId) return;
     setUpdatingGoldPrice(true);
     try {
-      const numeric =
-        Number(value.replace(/\s/g, "").replace(/,/g, "")) || 0;
+      const numeric = parseCurrencyInput(value) || 0;
       const db = getFirestoreDb();
       const ref = doc(db, "families", user.familyId, "goldSettings", "main");
       await setDoc(
@@ -271,8 +282,7 @@ export default function SavingsPage() {
   const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.familyId) return;
-    const amount =
-      Number(withdrawAmount.replace(/\s/g, "").replace(/,/g, "")) || 0;
+    const amount = parseCurrencyInput(withdrawAmount) || 0;
     if (amount <= 0 || amount > balance) return;
 
     try {
@@ -305,22 +315,25 @@ export default function SavingsPage() {
   const handleExtraDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.familyId) return;
-    const amount =
-      Number(extraAmount.replace(/\s/g, "").replace(/,/g, "")) || 0;
+    const amount = parseCurrencyInput(extraAmount) || 0;
     if (amount <= 0) return;
 
     try {
       setAddingExtra(true);
       const db = getFirestoreDb();
       const ref = doc(db, "families", user.familyId, "savingsFund", "main");
-      const now = new Date();
-      const month = `${now.getFullYear()}-${String(
-        now.getMonth() + 1,
-      ).padStart(2, "0")}`;
+      const dateStr = extraDepositDate || (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      })();
+      const [y, m] = dateStr.split("-");
+      const month = `${y}-${m}`;
+      const now = new Date(dateStr + "T12:00:00");
       const newDeposit: Deposit = {
         month,
         amount,
         sessionId: "manual",
+        note: extraNote.trim() || undefined,
         createdAt: now.toISOString(),
       };
       const nextDeposits = [...deposits, newDeposit];
@@ -342,8 +355,33 @@ export default function SavingsPage() {
 
       setExtraAmount("");
       setExtraNote("");
+      setExtraDepositDate("");
     } finally {
       setAddingExtra(false);
+    }
+  };
+
+  const handleDeleteDeposit = async (deposit: Deposit) => {
+    if (!user?.familyId) return;
+    if (!confirm("Xóa khoản nạp này?")) return;
+    const nextDeposits = deposits.filter((d) => d !== deposit);
+    const depositsTotal = nextDeposits.reduce((s, d) => s + d.amount, 0);
+    const withdrawalsTotal = withdrawals.reduce(
+      (s, w) => s + (w.amount ?? 0),
+      0,
+    );
+    const nextBalance = depositsTotal - withdrawalsTotal;
+    try {
+      const db = getFirestoreDb();
+      const ref = doc(db, "families", user.familyId, "savingsFund", "main");
+      await setDoc(
+        ref,
+        { deposits: nextDeposits, balance: nextBalance },
+        { merge: true },
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Không xóa được khoản nạp.");
     }
   };
 
@@ -352,8 +390,7 @@ export default function SavingsPage() {
     if (!user?.familyId) return;
     const weight =
       Number(existingGoldWeight.replace(/\s/g, "").replace(",", ".")) || 0;
-    const pricePerUnit =
-      Number(goldMarketPrice.replace(/\s/g, "").replace(/,/g, "")) || 0;
+    const pricePerUnit = parseCurrencyInput(goldMarketPrice) || 0;
     if (weight <= 0 || pricePerUnit <= 0) return;
 
     try {
@@ -474,13 +511,36 @@ export default function SavingsPage() {
                       <p className="text-[11px] font-medium text-muted-foreground">
                         Số tiền nạp thêm
                       </p>
-                      <Input
+                      <CurrencyInput
                         className="h-8 text-xs"
-                        inputMode="numeric"
-                        placeholder="Ví dụ: 10.000.000"
+                        placeholder="Ví dụ: 10,000,000"
                         value={extraAmount}
-                        onChange={(e) => setExtraAmount(e.target.value)}
+                        onChange={setExtraAmount}
                       />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        Ngày nạp (tùy chọn)
+                      </p>
+                      <div className="flex gap-2">
+                        <DatePicker
+                          value={extraDepositDate}
+                          onChange={setExtraDepositDate}
+                          placeholder="Mặc định: hôm nay"
+                          className="h-8 text-xs flex-1"
+                        />
+                        {extraDepositDate && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-xs text-muted-foreground shrink-0"
+                            onClick={() => setExtraDepositDate("")}
+                          >
+                            Bỏ chọn
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <p className="text-[11px] font-medium text-muted-foreground">
@@ -517,25 +577,92 @@ export default function SavingsPage() {
                 công.
               </p>
             ) : (
-              <div className="space-y-1 text-sm">
-                {deposits.map((d, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between border-b last:border-0 py-1"
-                  >
-                    <span>
-                      Tháng {d.month}
-                      {d.sessionId === "manual" && (
-                        <span className="ml-1 text-[10px] rounded px-1 py-0.5 bg-teal-50 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300">
-                          nạp tay
-                        </span>
-                      )}
-                    </span>
-                    <span className="font-medium text-teal-600">
-                      +{fmt(d.amount)} đ
-                    </span>
-                  </div>
-                ))}
+              <div className="max-h-[400px] overflow-y-auto rounded-md border">
+                <Table>
+                <TableHeader className="sticky top-0 z-10 bg-muted shadow-sm">
+                  <TableRow className="bg-muted/40">
+                    <TableHead className="text-xs">Tháng</TableHead>
+                    <TableHead className="text-xs">Khoản</TableHead>
+                    <TableHead className="text-xs text-right">Số tiền</TableHead>
+                    <TableHead className="text-xs w-12" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(() => {
+                    const byMonth = deposits.reduce(
+                      (acc, d) => {
+                        if (!acc[d.month])
+                          acc[d.month] = { session: [] as Deposit[], manual: [] as Deposit[] };
+                        if (d.sessionId === "manual") acc[d.month].manual.push(d);
+                        else acc[d.month].session.push(d);
+                        return acc;
+                      },
+                      {} as Record<string, { session: Deposit[]; manual: Deposit[] }>
+                    );
+                    const monthTotalMap = new Map<string, number>();
+                    for (const [m, g] of Object.entries(byMonth)) {
+                      const total = [...g.session, ...g.manual].reduce((s, d) => s + d.amount, 0);
+                      monthTotalMap.set(m, total);
+                    }
+                    const months = Object.keys(byMonth).sort((a, b) =>
+                      b.localeCompare(a)
+                    );
+                    return months.flatMap((month) => {
+                      const { session, manual } = byMonth[month];
+                      const items = [
+                        ...session.map((d) => ({ d, label: "Tiết kiệm" as const })),
+                        ...manual.map((d) => ({ d, label: d.note || "Nạp tay" })),
+                      ];
+                      const rowCount = items.length;
+                      if (rowCount === 0) return [];
+                      const monthTotal = fmt(monthTotalMap.get(month) ?? 0);
+                      const rows: React.ReactNode[] = [
+                        ...items.map(({ d, label }, i) => (
+                          <TableRow
+                            key={`${month}-${i}`}
+                            className={d.sessionId === "manual" ? "bg-muted/20" : ""}
+                          >
+                            {i === 0 ? (
+                              <TableCell
+                                className="text-xs font-medium align-top"
+                                rowSpan={rowCount + 1}
+                              >
+                                Tháng {month}
+                              </TableCell>
+                            ) : null}
+                            <TableCell className="text-xs pl-4">
+                              {label}
+                            </TableCell>
+                            <TableCell className="text-right text-xs font-medium text-teal-600">
+                              +{fmt(d.amount)} đ
+                            </TableCell>
+                            <TableCell className="w-12 p-1">
+                              <button
+                                type="button"
+                                className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() => handleDeleteDeposit(d)}
+                                title="Xóa"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </TableCell>
+                          </TableRow>
+                        )),
+                        <TableRow key={`${month}-total`} className="bg-teal-50 dark:bg-teal-950/50 border-t-2 border-teal-200 dark:border-teal-800">
+                          <TableCell className="text-xs pl-4 font-semibold text-foreground">
+                            Tổng cộng
+                          </TableCell>
+                          <TableCell className="text-right text-sm font-bold text-teal-600 dark:text-teal-400">
+                            +{monthTotal} đ
+                          </TableCell>
+                          <TableCell className="w-12 p-1" />
+                        </TableRow>,
+                      ];
+                      return rows;
+                    });
+                  })()}
+                </TableBody>
+              </Table>
               </div>
             )}
           </Card>
@@ -568,12 +695,11 @@ export default function SavingsPage() {
                         <p className="text-[11px] font-medium text-muted-foreground">
                           Số tiền muốn rút
                         </p>
-                        <Input
+                        <CurrencyInput
                           className="h-8 text-xs"
-                          inputMode="numeric"
-                          placeholder="Ví dụ: 5.000.000"
+                          placeholder="Ví dụ: 5,000,000"
                           value={withdrawAmount}
-                          onChange={(e) => setWithdrawAmount(e.target.value)}
+                          onChange={setWithdrawAmount}
                         />
                       </div>
                       <div className="flex-1 space-y-1">
@@ -596,12 +722,7 @@ export default function SavingsPage() {
                           {fmt(
                             Math.max(
                               0,
-                              balance -
-                                (Number(
-                                  withdrawAmount
-                                    .replace(/\s/g, "")
-                                    .replace(/,/g, ""),
-                                ) || 0),
+                              balance - (parseCurrencyInput(withdrawAmount) || 0),
                             ),
                           )}{" "}
                           đ
@@ -624,35 +745,41 @@ export default function SavingsPage() {
             </div>
 
             {withdrawals.length > 0 && (
-              <div className="pt-2 border-t mt-2 space-y-1 text-xs max-h-60 overflow-auto">
-                {withdrawals
-                  .slice()
-                  .reverse()
-                  .map((w, idx) => {
-                    const created =
-                      typeof w.createdAt === "string"
-                        ? w.createdAt
-                        : w.createdAt?.toDate?.()?.toISOString() ?? "";
-                    const dateLabel = created ? created.slice(0, 10) : "";
-                    return (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between gap-3 border-b last:border-0 py-1.5"
-                      >
-                        <div className="flex flex-col">
-                          <span className="font-medium">
-                            {w.note || "Chi từ quỹ"}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {dateLabel}
-                          </span>
-                        </div>
-                        <span className="text-xs font-semibold text-red-500 whitespace-nowrap">
-                          -{fmt(w.amount)} đ
-                        </span>
-                      </div>
-                    );
-                  })}
+              <div className="pt-2 border-t mt-2 max-h-[300px] overflow-y-auto rounded-md border">
+                <Table>
+                  <TableHeader className="sticky top-0 z-10 bg-muted shadow-sm">
+                    <TableRow className="bg-muted/40">
+                      <TableHead className="text-xs w-28">Ngày</TableHead>
+                      <TableHead className="text-xs">Ghi chú</TableHead>
+                      <TableHead className="text-xs text-right">Số tiền</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {withdrawals
+                      .slice()
+                      .reverse()
+                      .map((w, idx) => {
+                        const created =
+                          typeof w.createdAt === "string"
+                            ? w.createdAt
+                            : w.createdAt?.toDate?.()?.toISOString() ?? "";
+                        const dateLabel = created ? created.slice(0, 10) : "";
+                        return (
+                          <TableRow key={idx}>
+                            <TableCell className="text-xs tabular-nums">
+                              {dateLabel}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {w.note || "Chi từ quỹ"}
+                            </TableCell>
+                            <TableCell className="text-right text-xs font-semibold text-red-500 tabular-nums">
+                              -{fmt(w.amount)} đ
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                  </TableBody>
+                </Table>
               </div>
             )}
           </Card>
@@ -711,12 +838,11 @@ export default function SavingsPage() {
                       <p className="text-[11px] font-medium text-muted-foreground">
                         Giá/chỉ (đ)
                       </p>
-                      <Input
+                      <CurrencyInput
                         className="h-8 text-xs"
-                        inputMode="numeric"
-                        placeholder="Ví dụ: 7.000.000"
+                        placeholder="Ví dụ: 7,000,000"
                         value={goldPricePerUnit}
-                        onChange={(e) => setGoldPricePerUnit(e.target.value)}
+                        onChange={setGoldPricePerUnit}
                       />
                     </div>
                   </div>
@@ -791,12 +917,11 @@ export default function SavingsPage() {
                       Giá vàng hiện tại (đ/chỉ)
                     </p>
                     <div className="flex gap-2">
-                      <Input
+                      <CurrencyInput
                         className="h-8 text-xs flex-1"
-                        inputMode="numeric"
-                        placeholder="Ví dụ: 7.500.000"
+                        placeholder="Ví dụ: 7,500,000"
                         value={goldMarketPrice}
-                        onChange={(e) => setGoldMarketPrice(e.target.value)}
+                        onChange={setGoldMarketPrice}
                       />
                       <Button
                         type="button"
@@ -841,10 +966,7 @@ export default function SavingsPage() {
               );
               const avgPrice =
                 totalWeight > 0 ? Math.round(totalCost / totalWeight) : 0;
-              const market =
-                Number(
-                  goldMarketPrice.replace(/\s/g, "").replace(/,/g, ""),
-                ) || 0;
+              const market = parseCurrencyInput(goldMarketPrice) || 0;
               const estValue =
                 totalWeight > 0 && market > 0
                   ? Math.round(totalWeight * market)
@@ -880,12 +1002,11 @@ export default function SavingsPage() {
                       Giá vàng hiện tại (đ/chỉ)
                     </p>
                     <div className="flex gap-2">
-                      <Input
+                      <CurrencyInput
                         className="h-8 text-xs flex-1"
-                        inputMode="numeric"
-                        placeholder="Ví dụ: 7.500.000"
+                        placeholder="Ví dụ: 7,500,000"
                         value={goldMarketPrice}
-                        onChange={(e) => setGoldMarketPrice(e.target.value)}
+                        onChange={setGoldMarketPrice}
                       />
                       <Button
                         type="button"

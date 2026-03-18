@@ -16,6 +16,7 @@ import { useAuthStore } from "@/lib/stores/authStore";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Wallet, TrendingDown } from "lucide-react";
 
 function fmt(n: number) {
@@ -254,13 +255,11 @@ export default function AllocationPage() {
                 onChange={(e) => handleSlider(idx, Number(e.target.value))}
                 className="w-full accent-primary"
               />
-              <Input
-                type="number"
+              <CurrencyInput
                 className="h-7 text-xs"
                 value={item.amount}
-                onChange={(e) =>
-                  handleSlider(idx, Number(e.target.value) || 0)
-                }
+                onChange={() => {}}
+                onValueChange={(n) => handleSlider(idx, n)}
               />
 
               {item.amount > 0 && sessionRange && (
@@ -323,13 +322,13 @@ export default function AllocationPage() {
         <div className="flex items-center justify-between gap-3 text-sm">
           <span className="text-muted-foreground">Gửi vào quỹ tiết kiệm:</span>
           <div className="flex items-center gap-2">
-            <Input
-              type="number"
+            <CurrencyInput
               className="h-7 text-xs w-36"
               value={effectiveSavings}
-              onChange={(e) => {
+              onChange={() => {}}
+              onValueChange={(n) => {
                 setSavingsTouched(true);
-                setSavingsInput(Number(e.target.value) || 0);
+                setSavingsInput(n);
               }}
             />
             <span className="text-[11px] text-muted-foreground">
