@@ -140,6 +140,7 @@ export default function CalendarPage() {
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [createOpen, setCreateOpen] = useState(false);
+  const [selectedDateForCreate, setSelectedDateForCreate] = useState<string | null>(null);
   const [newSummary, setNewSummary] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newStart, setNewStart] = useState("");
@@ -196,6 +197,30 @@ export default function CalendarPage() {
     return eachDayOfInterval({ start, end });
   }, [currentDate]);
 
+  const handleOpenCreate = (dateStr?: string) => {
+    if (dateStr) {
+      setSelectedDateForCreate(dateStr);
+      setNewStart(dateStr);
+    } else {
+      setSelectedDateForCreate(null);
+      setNewStart("");
+    }
+    setCreateOpen(true);
+  };
+
+  const handleCloseCreate = (open: boolean) => {
+    setCreateOpen(open);
+    if (!open) {
+      setSelectedDateForCreate(null);
+      setNewSummary("");
+      setNewDesc("");
+      setNewStart("");
+      setNewEnd("");
+      setNewLocation("");
+      setNewColorId("");
+    }
+  };
+
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSummary.trim() || !newStart) return;
@@ -208,13 +233,7 @@ export default function CalendarPage() {
         location: newLocation.trim() || undefined,
         colorId: newColorId || undefined,
       });
-      setCreateOpen(false);
-      setNewSummary("");
-      setNewDesc("");
-      setNewStart("");
-      setNewEnd("");
-      setNewLocation("");
-      setNewColorId("");
+      handleCloseCreate(false);
     } catch (err) {
       console.error(err);
     }
@@ -341,16 +360,20 @@ export default function CalendarPage() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <Dialog open={createOpen} onOpenChange={handleCloseCreate}>
             <DialogTrigger asChild>
-              <Button size="sm" className="gap-1.5">
+              <Button size="sm" className="gap-1.5" onClick={() => handleOpenCreate()}>
                 <Plus className="h-4 w-4" />
                 Tạo
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Tạo sự kiện mới</DialogTitle>
+                <DialogTitle>
+                  {selectedDateForCreate
+                    ? `Thêm sự kiện - ${format(parseISO(selectedDateForCreate), "dd/MM/yyyy", { locale: vi })}`
+                    : "Tạo sự kiện mới"}
+                </DialogTitle>
               </DialogHeader>
               <form onSubmit={handleCreateEvent} className="space-y-4 mt-4">
                 <div className="space-y-1.5">
@@ -471,7 +494,16 @@ export default function CalendarPage() {
             return (
               <div
                 key={key}
-                className={`min-h-[100px] border-b border-r p-1 last:border-r-0 ${
+                role="button"
+                tabIndex={0}
+                onClick={() => handleOpenCreate(key)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleOpenCreate(key);
+                  }
+                }}
+                className={`min-h-[100px] cursor-pointer border-b border-r p-1 last:border-r-0 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
                   isCurrentMonth ? "bg-background" : "bg-muted/20"
                 }`}
               >
@@ -486,23 +518,45 @@ export default function CalendarPage() {
                 >
                   {format(day, "d")}
                 </div>
-                <div className="space-y-0.5">
-                  {dayEvents.slice(0, 3).map(({ ev, isFirst }) => (
-                    <a
-                      key={`${ev.id}-${key}`}
-                      href={ev.htmlLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold truncate hover:opacity-90 transition-opacity"
-                      style={getEventStyle(ev.colorId, ev.id ?? ev.summary)}
-                      title={ev.summary}
-                    >
-                      <span className="truncate flex-1">
-                        {!isFirst ? "… " : ""}{ev.summary}
+                <div className="space-y-0.5" onClick={(e) => e.stopPropagation()}>
+                  {dayEvents.slice(0, 3).map(({ ev, isFirst }) => {
+                    const isHoliday = ev.isHoliday ?? false;
+                    const content = (
+                      <>
+                        <span className="truncate flex-1">
+                          {!isFirst ? "… " : ""}{ev.summary}
+                        </span>
+                        {!isHoliday && ev.htmlLink && (
+                          <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-80" />
+                        )}
+                      </>
+                    );
+                    const style = isHoliday
+                      ? { backgroundColor: "#dc2626", color: "#ffffff" }
+                      : getEventStyle(ev.colorId, ev.id ?? ev.summary);
+                    return ev.htmlLink && !isHoliday ? (
+                      <a
+                        key={`${ev.id}-${key}`}
+                        href={ev.htmlLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold truncate hover:opacity-90 transition-opacity"
+                        style={style}
+                        title={ev.summary}
+                      >
+                        {content}
+                      </a>
+                    ) : (
+                      <span
+                        key={`${ev.id}-${key}`}
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold truncate"
+                        style={style}
+                        title={ev.summary}
+                      >
+                        {content}
                       </span>
-                      <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-80" />
-                    </a>
-                  ))}
+                    );
+                  })}
                   {dayEvents.length > 3 && (
                     <div className="text-[10px] text-muted-foreground px-1">
                       +{dayEvents.length - 3} nữa

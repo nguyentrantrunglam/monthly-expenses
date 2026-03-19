@@ -16,6 +16,7 @@ export interface CalendarEvent {
   htmlLink?: string;
   status?: string;
   colorId?: string;
+  isHoliday?: boolean;
 }
 
 export interface CalendarStatusResponse {

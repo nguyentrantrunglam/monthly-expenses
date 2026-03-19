@@ -58,18 +58,38 @@ export async function GET(req: NextRequest) {
     const maxResults = parseInt(searchParams.get("maxResults") ?? "100", 10);
 
     const calendar = createCalendarClient(tokens);
-    const res = await calendar.events.list({
-      calendarId: "primary",
+    const listParams = {
       timeMin: timeMin ?? undefined,
       timeMax: timeMax ?? undefined,
       maxResults,
       singleEvents: true,
-      orderBy: "startTime",
-    });
+      orderBy: "startTime" as const,
+    };
+
+    const VIETNAM_HOLIDAY_CALENDAR_IDS = [
+      "vi.vietnamese#holiday@group.v.calendar.google.com",
+      "en.vietnamese#holiday@group.v.calendar.google.com",
+    ];
+
+    const [primaryRes, ...holidayResults] = await Promise.all([
+      calendar.events.list({ calendarId: "primary", ...listParams }),
+      ...VIETNAM_HOLIDAY_CALENDAR_IDS.map((id) =>
+        calendar.events
+          .list({ calendarId: id, ...listParams })
+          .catch(() => ({ data: { items: [] } }))
+      ),
+    ]);
+
+    const holidayItems = (
+      holidayResults.find((r) => (r.data.items ?? []).length > 0)?.data.items ?? []
+    ).map((ev) => ({ ...ev, isHoliday: true }));
+
+    const primaryItems = primaryRes.data.items ?? [];
+    const items = [...primaryItems, ...holidayItems];
 
     return NextResponse.json({
-      items: res.data.items ?? [],
-      nextPageToken: res.data.nextPageToken,
+      items,
+      nextPageToken: primaryRes.data.nextPageToken,
     });
   } catch (err) {
     console.error(err);
