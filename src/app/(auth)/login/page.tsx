@@ -41,7 +41,7 @@ export default function LoginPage() {
             <Wallet className="h-6 w-6" />
           </div>
           <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight">Family Finance</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Family Manager</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Quản lý chi tiêu gia đình theo phiên họp hàng tháng
             </p>

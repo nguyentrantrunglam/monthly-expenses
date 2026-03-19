@@ -9,8 +9,8 @@ import { Toaster } from "@/components/ui/sonner";
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "Family Finance",
-  description: "Quản lý chi tiêu gia đình theo session tháng",
+  title: "Family Manager",
+  description: "Quản lý gia đình",
 };
 
 export default function RootLayout({

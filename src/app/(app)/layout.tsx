@@ -154,7 +154,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             F
           </div>
           <span className="text-[15px] font-semibold tracking-tight">
-            Family Finance
+            Family Manager
           </span>
         </div>
 

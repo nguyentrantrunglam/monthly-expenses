@@ -168,30 +168,6 @@ export default function FamilySettingsPage() {
       </Card>
 
       <Card className="p-5 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold">Ghi chú văn bản</p>
-          <Button
-            size="sm"
-            disabled={savingNote || sharedNote === (family.sharedNote ?? "")}
-            onClick={handleSaveNote}
-          >
-            {savingNote ? "Đang lưu..." : "Lưu"}
-          </Button>
-        </div>
-        <p className="text-[11px] text-muted-foreground">
-          Ghi chú văn bản tự do cho gia đình. Để dùng checklist có ngày hạn, hãy vào mục Ghi chú chung trên menu.
-        </p>
-        <Textarea
-          placeholder="Nhập ghi chú chung cho gia đình..."
-          value={sharedNote}
-          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setSharedNote(e.target.value)}
-          onBlur={handleSaveNote}
-          className="min-h-[100px] resize-y"
-          disabled={savingNote}
-        />
-      </Card>
-
-      <Card className="p-5 space-y-3">
         <p className="text-sm font-semibold">Thành viên ({Object.keys(family.members).length})</p>
         <ul className="space-y-1 text-sm">
           {Object.entries(family.members).map(([id, m]) => {
