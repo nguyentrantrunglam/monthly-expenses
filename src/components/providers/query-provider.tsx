@@ -8,7 +8,11 @@ export function QueryProvider({ children }: { children: ReactNode }) {
     () =>
       new QueryClient({
         defaultOptions: {
-          queries: { staleTime: 60 * 1000 },
+          queries: {
+            // Tăng cache để đổi tháng / quay lại tháng cũ hiển thị nhanh hơn.
+            staleTime: 5 * 60 * 1000,
+            refetchOnWindowFocus: false,
+          },
         },
       })
   );

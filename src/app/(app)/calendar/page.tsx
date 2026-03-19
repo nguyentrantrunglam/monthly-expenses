@@ -134,7 +134,7 @@ export default function CalendarPage() {
   const searchParams = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const { family } = useFamily();
-  const { data: status, refetch: refetchStatus } = useCalendarStatus();
+  const { data: status, isLoading: statusLoading, refetch: refetchStatus } = useCalendarStatus();
   const { connect, loading: connecting } = useConnectGoogleCalendar();
   const createEvent = useCreateCalendarEvent();
 
@@ -233,6 +233,23 @@ export default function CalendarPage() {
           </p>
         </div>
       </Card>
+    );
+  }
+
+  if (statusLoading) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Lịch gia đình</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Đang tải...
+          </p>
+        </div>
+        <Card className="flex flex-col items-center justify-center gap-4 py-24">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Đang kiểm tra kết nối lịch</p>
+        </Card>
+      </div>
     );
   }
 
@@ -426,7 +443,15 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden relative">
+        {eventsLoading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-[1px] rounded-lg">
+            <div className="flex flex-col items-center gap-2">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-sm text-muted-foreground">Đang tải sự kiện...</p>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-7 border-b bg-muted/30">
           {WEEKDAYS.map((d) => (
             <div
@@ -490,9 +515,6 @@ export default function CalendarPage() {
         </div>
       </Card>
 
-      {eventsLoading && (
-        <p className="text-sm text-muted-foreground">Đang tải sự kiện...</p>
-      )}
     </div>
   );
 }

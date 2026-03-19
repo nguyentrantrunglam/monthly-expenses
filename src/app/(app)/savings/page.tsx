@@ -361,6 +361,29 @@ export default function SavingsPage() {
     }
   };
 
+  const handleDeleteWithdrawal = async (index: number) => {
+    if (!user?.familyId) return;
+    if (!confirm("Xóa khoản chi này? Số dư sẽ được cộng lại.")) return;
+    const nextWithdrawals = withdrawals.filter((_, i) => i !== index);
+    const depositsTotal = deposits.reduce((s, d) => s + d.amount, 0);
+    const withdrawalsTotal = nextWithdrawals.reduce(
+      (s, w) => s + (w.amount ?? 0),
+      0,
+    );
+    const nextBalance = depositsTotal - withdrawalsTotal;
+    try {
+      const db = getFirestoreDb();
+      const ref = doc(db, "families", user.familyId, "savingsFund", "main");
+      await updateDoc(ref, {
+        withdrawals: nextWithdrawals,
+        balance: nextBalance,
+      } as unknown as Partial<{ withdrawals: Withdrawal[]; balance: number }>);
+    } catch (err) {
+      console.error(err);
+      alert("Không xóa được khoản chi.");
+    }
+  };
+
   const handleDeleteDeposit = async (deposit: Deposit) => {
     if (!user?.familyId) return;
     if (!confirm("Xóa khoản nạp này?")) return;
@@ -752,20 +775,22 @@ export default function SavingsPage() {
                       <TableHead className="text-xs w-28">Ngày</TableHead>
                       <TableHead className="text-xs">Ghi chú</TableHead>
                       <TableHead className="text-xs text-right">Số tiền</TableHead>
+                      <TableHead className="text-xs w-12" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {withdrawals
                       .slice()
                       .reverse()
-                      .map((w, idx) => {
+                      .map((w, displayIdx) => {
+                        const originalIdx = withdrawals.length - 1 - displayIdx;
                         const created =
                           typeof w.createdAt === "string"
                             ? w.createdAt
                             : w.createdAt?.toDate?.()?.toISOString() ?? "";
                         const dateLabel = created ? created.slice(0, 10) : "";
                         return (
-                          <TableRow key={idx}>
+                          <TableRow key={originalIdx}>
                             <TableCell className="text-xs tabular-nums">
                               {dateLabel}
                             </TableCell>
@@ -774,6 +799,16 @@ export default function SavingsPage() {
                             </TableCell>
                             <TableCell className="text-right text-xs font-semibold text-red-500 tabular-nums">
                               -{fmt(w.amount)} đ
+                            </TableCell>
+                            <TableCell className="w-12 p-1">
+                              <button
+                                type="button"
+                                className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() => handleDeleteWithdrawal(originalIdx)}
+                                title="Xóa"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
                             </TableCell>
                           </TableRow>
                         );

@@ -16,6 +16,17 @@ export interface CalendarEvent {
   colorId?: string;
 }
 
+export interface CalendarStatusResponse {
+  connected: boolean;
+  isOwner: boolean;
+  familyId: string | null;
+}
+
+export interface CalendarEventsResponse {
+  items: CalendarEvent[];
+  nextPageToken?: string;
+}
+
 async function getIdToken() {
   const auth = getFirebaseAuth();
   const user = auth.currentUser;
@@ -41,20 +52,24 @@ async function fetchWithAuth(url: string, options?: RequestInit) {
 }
 
 export function useCalendarStatus() {
-  return useQuery({
+  return useQuery<CalendarStatusResponse, Error>({
     queryKey: ["calendar-status"],
-    queryFn: () => fetchWithAuth("/api/calendar/status"),
+    queryFn: () =>
+      fetchWithAuth("/api/calendar/status") as Promise<CalendarStatusResponse>,
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
 export function useCalendarEvents(timeMin: string, timeMax: string) {
-  return useQuery({
+  return useQuery<CalendarEventsResponse, Error>({
     queryKey: ["calendar-events", timeMin, timeMax],
     queryFn: () =>
-      fetchWithAuth(
+      (fetchWithAuth(
         `/api/calendar/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`
-      ),
+      ) as Promise<CalendarEventsResponse>),
     enabled: !!timeMin && !!timeMax,
+    refetchOnWindowFocus: true,
   });
 }
 
