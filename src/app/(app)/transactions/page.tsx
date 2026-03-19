@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { differenceInDays, endOfDay, startOfDay } from "date-fns";
 import {
   collection,
   doc,
@@ -48,7 +49,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Receipt, Plus, Pencil, Trash2, X, Check, Wallet, Scale } from "lucide-react";
+import { Receipt, Plus, Pencil, Trash2, X, Check, Wallet, Scale, Mic } from "lucide-react";
+import { VoiceExpenseInput } from "@/components/VoiceExpenseInput";
 
 const CATEGORIES = [
   "Ăn uống",
@@ -92,6 +94,8 @@ export default function TransactionsPage() {
   const [editTitle, setEditTitle] = useState("");
   const [editNote, setEditNote] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   // Budget tracking: load all locked sessions with allocations
   const [sessionBudgets, setSessionBudgets] = useState<
@@ -203,6 +207,14 @@ export default function TransactionsPage() {
   const myBudget = activeBudget?.myBudget ?? null;
   const sharedPool = activeBudget?.sharedPool ?? null;
 
+  const sessionRemainingDays = useMemo(() => {
+    if (!budgetFromSession) return null;
+    const { endStr } = sessionRange(budgetFromSession);
+    const endDate = endOfDay(new Date(endStr + "T12:00:00"));
+    const today = startOfDay(new Date());
+    return Math.max(0, differenceInDays(endDate, today) + 1);
+  }, [budgetFromSession, cycleDay]);
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -235,6 +247,22 @@ export default function TransactionsPage() {
       setFormError("Không lưu được giao dịch.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleConfirmVoice = async (
+    expenses: { title: string; amount: number; category: string; date: string }[]
+  ) => {
+    for (const e of expenses) {
+      await addTransaction({
+        title: e.title,
+        amount: e.amount,
+        type: "expense",
+        category: e.category,
+        spendingType,
+        note: "",
+        date: e.date,
+      });
     }
   };
 
@@ -356,15 +384,28 @@ export default function TransactionsPage() {
             Ghi chép chi tiêu hàng ngày
           </p>
         </div>
-        <Dialog open={showAddModal} onOpenChange={(open) => {
-          setShowAddModal(open);
-          if (!open) setFormError(null);
-        }}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-1.5">
-              <Plus className="h-4 w-4" /> Thêm giao dịch
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2">
+          <VoiceExpenseInput
+            open={voiceOpen}
+            onOpenChange={setVoiceOpen}
+            onConfirm={handleConfirmVoice}
+            defaultDate={date}
+            defaultSpendingType={spendingType}
+            trigger={
+              <Button size="sm" variant="outline" className="gap-1.5">
+                <Mic className="h-4 w-4" /> Thu âm
+              </Button>
+            }
+          />
+          <Dialog open={showAddModal} onOpenChange={(open) => {
+            setShowAddModal(open);
+            if (!open) setFormError(null);
+          }}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-1.5">
+                <Plus className="h-4 w-4" /> Thêm giao dịch
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-6">
             <DialogHeader>
               <DialogTitle>Thêm giao dịch</DialogTitle>
@@ -475,6 +516,7 @@ export default function TransactionsPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Budget summary — only show when there's an allocation for the active month */}
@@ -490,6 +532,9 @@ export default function TransactionsPage() {
                 </div>
                 <span className="text-[10px] text-muted-foreground">
                   session {budgetFromSession}
+                  {sessionRemainingDays != null && (
+                    <> · Còn {sessionRemainingDays} ngày</>
+                  )}
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-3 mb-2.5">
@@ -546,6 +591,9 @@ export default function TransactionsPage() {
                 </div>
                 <span className="text-[10px] text-muted-foreground">
                   session {budgetFromSession}
+                  {sessionRemainingDays != null && (
+                    <> · Còn {sessionRemainingDays} ngày</>
+                  )}
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-3 mb-2.5">

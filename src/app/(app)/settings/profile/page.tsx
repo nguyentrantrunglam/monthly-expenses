@@ -20,7 +20,17 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { User, Mail, Lock, Check, AlertCircle, Camera, Loader2 } from "lucide-react";
+import {
+  User,
+  Mail,
+  Lock,
+  Check,
+  AlertCircle,
+  Camera,
+  Loader2,
+  Link2,
+  Copy,
+} from "lucide-react";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 
@@ -44,6 +54,13 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPw, setChangingPw] = useState(false);
   const [pwMsg, setPwMsg] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
+  const [quickLink, setQuickLink] = useState<string | null>(null);
+  const [quickLinkLoading, setQuickLinkLoading] = useState(false);
+  const [quickLinkMsg, setQuickLinkMsg] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
@@ -181,6 +198,48 @@ export default function ProfilePage() {
       setPwMsg({ type: "error", text: msg });
     } finally {
       setChangingPw(false);
+    }
+  };
+
+  const handleCreateQuickLink = async () => {
+    setQuickLinkMsg(null);
+    setQuickLinkLoading(true);
+    try {
+      const auth = getFirebaseAuth();
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) throw new Error("Chưa đăng nhập");
+
+      const token = await firebaseUser.getIdToken();
+      const res = await fetch("/api/transactions/quick-token", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error ?? "Không thể tạo link");
+
+      setQuickLink(data.exampleUrl);
+      setQuickLinkMsg({
+        type: "success",
+        text: "Đã tạo link. Bấm Sao chép để lưu.",
+      });
+    } catch (err: unknown) {
+      setQuickLinkMsg({
+        type: "error",
+        text: err instanceof Error ? err.message : "Tạo link thất bại.",
+      });
+    } finally {
+      setQuickLinkLoading(false);
+    }
+  };
+
+  const handleCopyQuickLink = async () => {
+    if (!quickLink) return;
+    try {
+      await navigator.clipboard.writeText(quickLink);
+      setQuickLinkMsg({ type: "success", text: "Đã sao chép link." });
+    } catch {
+      setQuickLinkMsg({ type: "error", text: "Không thể sao chép." });
     }
   };
 
@@ -379,6 +438,85 @@ export default function ProfilePage() {
             {changingPw ? "Đang đổi..." : "Đổi mật khẩu"}
           </Button>
         </form>
+      </Card>
+
+      {/* Quick add link */}
+      <Card className="p-5">
+        <div className="space-y-4">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <Link2 className="h-4 w-4" />
+            Link thêm nhanh
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Tạo link để thêm chi tiêu chỉ bằng cách mở URL (không cần đăng nhập). Dùng cho bookmark, shortcut hoặc
+            chia sẻ với người khác.
+          </p>
+          {!user.familyId && (
+            <p className="text-sm text-amber-600 dark:text-amber-500">
+              Bạn cần tham gia gia đình trước khi tạo link.
+            </p>
+          )}
+
+          {quickLinkMsg && (
+            <div
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+                quickLinkMsg.type === "success"
+                  ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400"
+                  : "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400"
+              }`}
+            >
+              {quickLinkMsg.type === "success" ? (
+                <Check className="h-4 w-4 shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 shrink-0" />
+              )}
+              {quickLinkMsg.text}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleCreateQuickLink}
+              disabled={quickLinkLoading || !user.familyId}
+            >
+              {quickLinkLoading ? (
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  Đang tạo...
+                </>
+              ) : quickLink ? (
+                "Làm mới link"
+              ) : (
+                "Tạo link"
+              )}
+            </Button>
+            {quickLink && (
+              <Button type="button" size="sm" onClick={handleCopyQuickLink}>
+                <Copy className="mr-1.5 h-3.5 w-3.5" />
+                Sao chép
+              </Button>
+            )}
+          </div>
+
+          {quickLink && (
+            <div className="rounded-md bg-muted px-3 py-2 text-xs font-mono break-all">
+              {quickLink}
+            </div>
+          )}
+
+          <p className="text-[11px] text-muted-foreground">
+            Tham số: <code className="rounded bg-muted px-1">token</code> (bắt buộc),{" "}
+            <code className="rounded bg-muted px-1">title</code>,{" "}
+            <code className="rounded bg-muted px-1">amount</code>,{" "}
+            <code className="rounded bg-muted px-1">category</code>,{" "}
+            <code className="rounded bg-muted px-1">date</code>,{" "}
+            <code className="rounded bg-muted px-1">spendingType</code>,{" "}
+            <code className="rounded bg-muted px-1">note</code>.
+          </p>
+        </div>
       </Card>
     </div>
   );
