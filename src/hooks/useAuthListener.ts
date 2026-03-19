@@ -21,6 +21,7 @@ export function useAuthListener() {
         return;
       }
 
+      setLoading(true);
       try {
         const userRef = doc(db, "users", firebaseUser.uid);
         const snap = await getDoc(userRef);

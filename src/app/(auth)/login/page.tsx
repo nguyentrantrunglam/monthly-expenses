@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase/client";
+import { useAuthStore } from "@/lib/stores/authStore";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,10 +13,20 @@ import { Wallet } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const authLoading = useAuthStore((s) => s.loading);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pendingRedirect = useRef(false);
+
+  useEffect(() => {
+    if (pendingRedirect.current && !authLoading && user) {
+      pendingRedirect.current = false;
+      router.replace("/dashboard");
+    }
+  }, [user, authLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +35,7 @@ export default function LoginPage() {
     try {
       const auth = getFirebaseAuth();
       await signInWithEmailAndPassword(auth, email, password);
-      router.replace("/dashboard");
+      pendingRedirect.current = true;
     } catch (err) {
       console.error(err);
       setError("Đăng nhập thất bại. Vui lòng kiểm tra email/mật khẩu.");

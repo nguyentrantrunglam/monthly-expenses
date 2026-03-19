@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   arrayUnion,
   collection,
@@ -26,10 +26,32 @@ export interface Notification {
   createdAt: unknown;
 }
 
+function playBellSound() {
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = "sine";
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+  } catch {
+    // ignore
+  }
+}
+
 export function useNotifications() {
   const user = useAuthStore((s) => s.user);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const prevUnreadIdsRef = useRef<Set<string>>(new Set());
+  const isFirstLoadRef = useRef(true);
 
   useEffect(() => {
     if (!user?.familyId) {
@@ -55,11 +77,21 @@ export function useNotifications() {
           createdAt: data.createdAt,
         });
       });
+      const unread = list.filter(
+        (n) => n.createdBy !== user?.uid && !n.readBy.includes(user?.uid ?? "")
+      );
+      const unreadIds = new Set(unread.map((n) => n.id));
+      if (!isFirstLoadRef.current && unreadIds.size > 0) {
+        const hasNew = [...unreadIds].some((id) => !prevUnreadIdsRef.current.has(id));
+        if (hasNew) playBellSound();
+      }
+      isFirstLoadRef.current = false;
+      prevUnreadIdsRef.current = unreadIds;
       setNotifications(list);
       setLoading(false);
     });
     return () => unsub();
-  }, [user?.familyId]);
+  }, [user?.familyId, user?.uid]);
 
   const unreadCount = notifications.filter(
     (n) => n.createdBy !== user?.uid && !n.readBy.includes(user?.uid ?? "")
