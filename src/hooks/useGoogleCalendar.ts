@@ -3,6 +3,8 @@
 import { useCallback, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getFirebaseAuth } from "@/lib/firebase/client";
+import { useAuthStore } from "@/lib/stores/authStore";
+import { createNotification } from "@/lib/notifications";
 
 export interface CalendarEvent {
   id?: string;
@@ -119,8 +121,17 @@ export function useCreateCalendarEvent() {
         body: JSON.stringify(event),
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
+      const user = useAuthStore.getState().user;
+      if (user?.familyId) {
+        createNotification(user.familyId, {
+          type: "calendar",
+          createdBy: user.uid,
+          message: `Đã thêm sự kiện lịch: ${variables.summary.slice(0, 50)}${variables.summary.length > 50 ? "…" : ""}`,
+          link: "/calendar",
+        }).catch(() => {});
+      }
     },
   });
 }

@@ -19,6 +19,7 @@ import {
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase/client";
 import { useAuthStore } from "@/lib/stores/authStore";
+import { createNotification } from "@/lib/notifications";
 
 export interface IncomeItem {
   label: string;
@@ -139,6 +140,14 @@ export function useSessions() {
       remainingBudget: totalIncome - totalExpense,
       createdAt: serverTimestamp(),
       lockedAt: null,
+    });
+
+    await createNotification(user.familyId, {
+      type: "session",
+      createdBy: user.uid,
+      message: `Chủ gia đình đã tạo session tháng ${input.month}`,
+      link: `/session/${ref.id}`,
+      metadata: { sessionId: ref.id, month: input.month },
     });
 
     return ref.id;

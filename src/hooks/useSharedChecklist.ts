@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase/client";
 import { useAuthStore } from "@/lib/stores/authStore";
+import { createNotification } from "@/lib/notifications";
 
 export interface SharedChecklistItem {
   id: string;
@@ -31,6 +32,7 @@ export function useSharedChecklist() {
 
   useEffect(() => {
     if (!user?.familyId) {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       setItems([]);
       setLoading(false);
       return;
@@ -68,6 +70,12 @@ export function useSharedChecklist() {
       createdAt: serverTimestamp(),
       createdBy: user.uid,
     });
+    await createNotification(user.familyId, {
+      type: "notes",
+      createdBy: user.uid,
+      message: `Đã thêm mục vào ghi chú chung: ${title.trim().slice(0, 50)}${title.length > 50 ? "…" : ""}`,
+      link: "/notes",
+    });
   };
 
   const toggleItem = async (id: string, done: boolean) => {
@@ -82,6 +90,13 @@ export function useSharedChecklist() {
     const db = getFirestoreDb();
     const ref = doc(db, "families", user.familyId, "sharedChecklist", id);
     await updateDoc(ref, patch);
+    const title = patch.title?.slice(0, 50) ?? "mục";
+    await createNotification(user.familyId, {
+      type: "notes",
+      createdBy: user.uid,
+      message: `Đã cập nhật ghi chú: ${title}${(patch.title?.length ?? 0) > 50 ? "…" : ""}`,
+      link: "/notes",
+    });
   };
 
   const deleteItem = async (id: string) => {

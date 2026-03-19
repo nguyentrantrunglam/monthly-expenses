@@ -15,6 +15,7 @@ import {
 import { getFirestoreDb } from "@/lib/firebase/client";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { nanoid } from "nanoid";
+import { createNotification } from "@/lib/notifications";
 
 export type FamilyRole = "owner" | "member";
 
@@ -175,6 +176,12 @@ export function useFamily() {
     const db = getFirestoreDb();
     const ref = doc(db, "families", user.familyId);
     await updateDoc(ref, { sharedNote: note });
+    await createNotification(user.familyId, {
+      type: "notes",
+      createdBy: user.uid,
+      message: "Đã cập nhật ghi chú văn bản gia đình",
+      link: "/settings/family",
+    });
   };
 
   const removeMember = async (memberId: string) => {

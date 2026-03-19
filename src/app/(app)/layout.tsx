@@ -32,6 +32,7 @@ import {
   ChevronsUpDown,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { NotificationBell } from "@/components/NotificationBell";
 
 interface NavItem {
   href: string;
@@ -149,13 +150,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <div className="flex h-screen overflow-hidden bg-muted/30">
       {/* Sidebar */}
       <aside className="hidden w-[260px] shrink-0 border-r bg-card md:flex md:flex-col">
-        <div className="flex h-14 items-center gap-2 border-b px-5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
-            F
+        <div className="flex h-14 items-center justify-between gap-2 border-b px-5">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
+              F
+            </div>
+            <span className="text-[15px] font-semibold tracking-tight truncate">
+              Family Manager
+            </span>
           </div>
-          <span className="text-[15px] font-semibold tracking-tight">
-            Family Manager
-          </span>
+          {user?.familyId && <NotificationBell />}
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
