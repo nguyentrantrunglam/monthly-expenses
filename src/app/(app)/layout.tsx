@@ -58,7 +58,7 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    title: "Thu chi",
+    title: "Chi tiêu",
     items: [
       {
         href: "/session",
@@ -84,6 +84,11 @@ const navGroups: NavGroup[] = [
         icon: <ListChecks className="h-4 w-4" />,
         requiresFamily: true,
       },
+    ],
+  },
+  {
+    title: "Kế hoạch",
+    items: [
       {
         href: "/notes",
         label: "Ghi chú chung",
