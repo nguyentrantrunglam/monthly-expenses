@@ -1,3 +1,5 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
 const CATEGORIES = [
   "Ăn uống",
   "Di chuyển",
@@ -30,44 +32,38 @@ Quy tắc:
 8. Ví dụ thiếu: "mua đồ" (không có số tiền), "hello" (không phải chi tiêu)`;
 
 /**
- * Gọi Claude API để parse tin nhắn thành structured data.
+ * Gọi Gemini API để parse tin nhắn thành structured data.
  */
 export async function parseTransaction(
   message: string,
   apiKey: string
 ): Promise<ParsedTransaction> {
   const today = new Date().toISOString().slice(0, 10);
+  const prompt = `${SYSTEM_PROMPT}\n\nNgày hôm nay: ${today}\n\nTin nhắn: ${message}`;
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 256,
-      messages: [
-        {
-          role: "user",
-          content: `${SYSTEM_PROMPT}\n\nNgày hôm nay: ${today}\n\nTin nhắn: ${message}`,
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const modelNames = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
+  let rawText = "";
+  let lastErr: unknown = null;
+
+  for (const modelName of modelNames) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 256,
         },
-      ],
-    }),
-  });
-
-  if (!res.ok) {
-    const err = (await res.json()) as { error?: { message: string } };
-    throw new Error(err.error?.message ?? "Claude API lỗi");
+      });
+      const result = await model.generateContent(prompt);
+      rawText = result.response.text()?.trim() ?? "";
+      if (rawText) break;
+    } catch (e) {
+      lastErr = e;
+    }
   }
 
-  const data = (await res.json()) as {
-    content?: Array<{ type: string; text?: string }>;
-  };
-
-  const textBlock = data.content?.find((c) => c.type === "text");
-  const rawText = textBlock?.text?.trim();
+  if (!rawText && lastErr) throw lastErr;
   if (!rawText) {
     return { error: "Không nhận được phản hồi từ AI" };
   }

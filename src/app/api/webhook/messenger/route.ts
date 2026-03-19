@@ -66,10 +66,10 @@ export async function POST(req: NextRequest) {
   }
 
   const pageToken = process.env.FB_PAGE_ACCESS_TOKEN;
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
 
-  if (!pageToken || !anthropicKey) {
-    console.error("[webhook/messenger] Thiếu env: FB_PAGE_ACCESS_TOKEN hoặc ANTHROPIC_API_KEY");
+  if (!pageToken || !geminiKey) {
+    console.error("[webhook/messenger] Thiếu env: FB_PAGE_ACCESS_TOKEN hoặc GEMINI_API_KEY");
     return new NextResponse("OK", { status: 200 });
   }
 
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
             return;
           }
 
-          const parsed = await parseTransaction(text, anthropicKey);
+          const parsed = await parseTransaction(text, geminiKey);
 
           if (parsed.error) {
             await sendMessengerMessage(
