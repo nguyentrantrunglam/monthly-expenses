@@ -29,6 +29,8 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
@@ -185,6 +187,7 @@ export default function CalendarPage() {
   const [newEnd, setNewEnd] = useState("");
   const [newStartTime, setNewStartTime] = useState("09:00");
   const [newEndTime, setNewEndTime] = useState("10:00");
+  const [newAllDay, setNewAllDay] = useState(true);
   const [newLocation, setNewLocation] = useState("");
   const [newColorId, setNewColorId] = useState<string>("");
   const [detailEvent, setDetailEvent] = useState<CalendarEvent | null>(null);
@@ -259,6 +262,7 @@ export default function CalendarPage() {
       setNewEnd("");
       setNewStartTime("09:00");
       setNewEndTime("10:00");
+      setNewAllDay(true);
       setNewLocation("");
       setNewColorId("");
     }
@@ -268,15 +272,21 @@ export default function CalendarPage() {
     e.preventDefault();
     if (!newSummary.trim() || !newStart) return;
     try {
-      const startIso = combineLocalDateTimeToIso(newStart, newStartTime);
-      const endIso = newEnd
-        ? combineLocalDateTimeToIso(newEnd, newEndTime)
-        : undefined;
+      const startPayload = newAllDay
+        ? newStart.slice(0, 10)
+        : combineLocalDateTimeToIso(newStart, newStartTime);
+      const endPayload = newAllDay
+        ? newEnd
+          ? newEnd.slice(0, 10)
+          : undefined
+        : newEnd
+          ? combineLocalDateTimeToIso(newEnd, newEndTime)
+          : undefined;
       await createEvent.mutateAsync({
         summary: newSummary.trim(),
         description: newDesc.trim() || undefined,
-        start: startIso,
-        end: endIso,
+        start: startPayload,
+        end: endPayload,
         location: newLocation.trim() || undefined,
         colorId: newColorId || undefined,
       });
@@ -449,48 +459,73 @@ export default function CalendarPage() {
                     placeholder="Thêm mô tả"
                   />
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="event-all-day"
+                    checked={newAllDay}
+                    onCheckedChange={(v) => setNewAllDay(v === true)}
+                  />
+                  <Label
+                    htmlFor="event-all-day"
+                    className="cursor-pointer text-sm font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Cả ngày
+                  </Label>
+                </div>
+                <div className="grid gap-4 grid-cols-1">
+                  <div className="space-y-2">
                     <label className="text-[11px] font-medium text-muted-foreground">
                       Bắt đầu
                     </label>
-                    <div className="flex gap-2">
-                      <DatePicker
-                        value={newStart}
-                        onChange={setNewStart}
-                        placeholder="Ngày"
-                        className="min-w-0 flex-1"
-                      />
-                      <Input
-                        type="time"
-                        value={newStartTime}
-                        onChange={(e) => setNewStartTime(e.target.value)}
-                        className="h-8 w-[6.5rem] shrink-0 px-2"
-                        aria-label="Giờ bắt đầu"
-                      />
-                    </div>
+                    <DatePicker
+                      value={newStart}
+                      onChange={setNewStart}
+                      placeholder="Chọn ngày"
+                      className="w-full"
+                    />
+                    {!newAllDay ? (
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                        <span className="text-[11px] text-muted-foreground shrink-0">
+                          Giờ
+                        </span>
+                        <Input
+                          type="time"
+                          value={newStartTime}
+                          onChange={(e) => setNewStartTime(e.target.value)}
+                          className="h-8 w-full sm:w-36"
+                          aria-label="Giờ bắt đầu"
+                        />
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <label className="text-[11px] font-medium text-muted-foreground">
                       Kết thúc (tùy chọn)
                     </label>
-                    <div className="flex gap-2">
-                      <DatePicker
-                        value={newEnd}
-                        onChange={setNewEnd}
-                        placeholder="Ngày"
-                        className="min-w-0 flex-1"
-                      />
-                      <Input
-                        type="time"
-                        value={newEndTime}
-                        onChange={(e) => setNewEndTime(e.target.value)}
-                        className="h-8 w-[6.5rem] shrink-0 px-2"
-                        aria-label="Giờ kết thúc"
-                      />
-                    </div>
+                    <DatePicker
+                      value={newEnd}
+                      onChange={setNewEnd}
+                      placeholder="Chọn ngày"
+                      className="w-full"
+                    />
+                    {!newAllDay ? (
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                        <span className="text-[11px] text-muted-foreground shrink-0">
+                          Giờ
+                        </span>
+                        <Input
+                          type="time"
+                          value={newEndTime}
+                          onChange={(e) => setNewEndTime(e.target.value)}
+                          className="h-8 w-full sm:w-36"
+                          aria-label="Giờ kết thúc"
+                        />
+                      </div>
+                    ) : null}
                     <p className="text-[10px] text-muted-foreground">
-                      Để trống ngày kết thúc → mặc định +1 giờ sau giờ bắt đầu.
+                      {newAllDay
+                        ? "Để trống ngày kết thúc → một ngày duy nhất. Có thể chọn ngày cuối (tính cả ngày đó)."
+                        : "Để trống ngày kết thúc → mặc định +1 giờ sau giờ bắt đầu."}
                     </p>
                   </div>
                 </div>
