@@ -35,6 +35,17 @@ export interface Family {
   sharedNote?: string;
 }
 
+/** Chủ hộ: role owner trong members hoặc người tạo gia đình. */
+export function isFamilyOwner(
+  uid: string | null | undefined,
+  family: Family | null | undefined,
+): boolean {
+  if (!uid || !family) return false;
+  return (
+    family.members[uid]?.role === "owner" || family.createdBy === uid
+  );
+}
+
 export function useFamily() {
   const user = useAuthStore((s) => s.user);
   const [family, setFamily] = useState<Family | null>(null);

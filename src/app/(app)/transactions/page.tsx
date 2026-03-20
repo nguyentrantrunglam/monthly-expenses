@@ -11,7 +11,7 @@ import {
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase/client";
 import { useTransactions, type Transaction } from "@/hooks/useTransactions";
-import { useFamily } from "@/hooks/useFamily";
+import { useFamily, isFamilyOwner } from "@/hooks/useFamily";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,15 @@ const CATEGORIES = [
   "Khác",
 ];
 
+const INCOME_CATEGORIES = [
+  "Lương & thu nhập",
+  "Thưởng",
+  "Bán hàng / dịch vụ",
+  "Đầu tư / lãi",
+  "Hoàn tiền",
+  "Thu khác",
+];
+
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
 }
@@ -71,6 +80,9 @@ export default function TransactionsPage() {
   const user = useAuthStore((s) => s.user);
   const { family } = useFamily();
   const [filterCategory, setFilterCategory] = useState("");
+  const [scopeView, setScopeView] = useState<
+    "all" | "personal_mine" | "shared_pool"
+  >("all");
   const { transactions, loading, addTransaction, updateTransaction, deleteTransaction } =
     useTransactions({
       category: filterCategory || undefined,
@@ -85,6 +97,7 @@ export default function TransactionsPage() {
   );
   const [note, setNote] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [addTxType, setAddTxType] = useState<"expense" | "income">("expense");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -94,6 +107,7 @@ export default function TransactionsPage() {
   const [editTitle, setEditTitle] = useState("");
   const [editNote, setEditNote] = useState("");
   const [editDate, setEditDate] = useState("");
+  const [editTxType, setEditTxType] = useState<"expense" | "income">("expense");
   const [editSaving, setEditSaving] = useState(false);
 
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -233,7 +247,7 @@ export default function TransactionsPage() {
       await addTransaction({
         title: title.trim(),
         amount: parsed,
-        type: "expense",
+        type: addTxType,
         category,
         spendingType,
         note: note.trim(),
@@ -243,6 +257,7 @@ export default function TransactionsPage() {
       setAmount("");
       setNote("");
       setShowAddModal(false);
+      setAddTxType("expense");
     } catch (err) {
       console.error(err);
       setFormError("Không lưu được giao dịch.");
@@ -267,6 +282,16 @@ export default function TransactionsPage() {
     }
   };
 
+  const handleEditTxTypeChange = (t: "expense" | "income") => {
+    setEditTxType(t);
+    const list = INCOME_CATEGORIES;
+    const expenseList = CATEGORIES;
+    setEditCategory((cat) => {
+      const allowed = t === "income" ? list : expenseList;
+      return allowed.includes(cat) ? cat : allowed[0];
+    });
+  };
+
   const startEdit = (tx: Transaction) => {
     setEditingId(tx.id);
     setEditTitle(tx.title ?? "");
@@ -274,6 +299,7 @@ export default function TransactionsPage() {
     setEditCategory(tx.category);
     setEditNote(tx.note);
     setEditDate(tx.date || new Date().toISOString().slice(0, 10));
+    setEditTxType(tx.type === "income" ? "income" : "expense");
   };
 
   const saveEdit = async () => {
@@ -286,6 +312,7 @@ export default function TransactionsPage() {
       await updateTransaction(editingId, {
         title: editTitle.trim(),
         amount: parsed,
+        type: editTxType,
         category: editCategory,
         note: editNote,
         date: editDate,
@@ -296,7 +323,7 @@ export default function TransactionsPage() {
     }
   };
 
-  const visibleTransactions = useMemo(() => {
+  const sessionFilteredTx = useMemo(() => {
     if (!selectedSessionMonth) return transactions;
     const { startStr, endStr } = sessionRange(selectedSessionMonth);
     return transactions.filter(
@@ -305,8 +332,24 @@ export default function TransactionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, selectedSessionMonth, cycleDay]);
 
+  const visibleTransactions = useMemo(() => {
+    const uid = user?.uid;
+    if (scopeView === "all" || !uid) return sessionFilteredTx;
+    if (scopeView === "shared_pool") {
+      return sessionFilteredTx.filter((t) => t.spendingType === "shared_pool");
+    }
+    return sessionFilteredTx.filter((t) => {
+      if (t.spendingType !== "personal") return false;
+      if (t.allocationUserId != null) return t.allocationUserId === uid;
+      return t.userId === uid;
+    });
+  }, [sessionFilteredTx, scopeView, user?.uid]);
+
   const totalExpense = visibleTransactions
     .filter((t) => t.type === "expense")
+    .reduce((s, t) => s + t.amount, 0);
+  const totalIncome = visibleTransactions
+    .filter((t) => t.type === "income")
     .reduce((s, t) => s + t.amount, 0);
 
   // Spending breakdown for the active session
@@ -385,7 +428,7 @@ export default function TransactionsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Giao dịch</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Ghi chép chi tiêu hàng ngày
+            Ghi chép thu và chi hàng ngày
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -403,7 +446,10 @@ export default function TransactionsPage() {
           />
           <Dialog open={showAddModal} onOpenChange={(open) => {
             setShowAddModal(open);
-            if (!open) setFormError(null);
+            if (!open) {
+              setFormError(null);
+              setAddTxType("expense");
+            }
           }}>
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1.5">
@@ -415,6 +461,45 @@ export default function TransactionsPage() {
               <DialogTitle>Thêm giao dịch</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleAdd} className="space-y-3 mt-4">
+              <div className="space-y-1.5">
+                <Label>Loại giao dịch</Label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                      addTxType === "expense"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}
+                    onClick={() => {
+                      setAddTxType("expense");
+                      setCategory((c) =>
+                        CATEGORIES.includes(c) ? c : CATEGORIES[0],
+                      );
+                    }}
+                  >
+                    Chi tiêu
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                      addTxType === "income"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}
+                    onClick={() => {
+                      setAddTxType("income");
+                      setCategory((c) =>
+                        INCOME_CATEGORIES.includes(c)
+                          ? c
+                          : INCOME_CATEGORIES[0],
+                      );
+                    }}
+                  >
+                    Thu nhập
+                  </button>
+                </div>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label>Tên giao dịch</Label>
@@ -455,9 +540,13 @@ export default function TransactionsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {CATEGORIES.map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
+                      {(addTxType === "income" ? INCOME_CATEGORIES : CATEGORIES).map(
+                        (c) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ),
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -466,7 +555,11 @@ export default function TransactionsPage() {
                   <DatePicker value={date} onChange={setDate} />
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Nguồn chi</Label>
+                  <Label>
+                    {addTxType === "income"
+                      ? "Thuộc về (quỹ nào)"
+                      : "Nguồn chi"}
+                  </Label>
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -709,11 +802,54 @@ export default function TransactionsPage() {
             ))}
           </SelectContent>
         </Select>
-        <div className="ml-auto text-sm">
-          Tổng chi:{" "}
-          <span className="font-semibold text-red-500">
-            {fmt(totalExpense)} đ
-          </span>
+        <div
+          className="inline-flex shrink-0 rounded-lg border bg-muted/40 p-0.5 shadow-sm"
+          role="tablist"
+          aria-label="Phạm vi quỹ"
+        >
+          {(
+            [
+              { key: "all" as const, label: "Tất cả" },
+              { key: "personal_mine" as const, label: "Cá nhân" },
+              { key: "shared_pool" as const, label: "Quỹ chung" },
+            ] as const
+          ).map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={scopeView === key}
+              title={
+                key === "all"
+                  ? "Mọi giao dịch trong session"
+                  : key === "personal_mine"
+                    ? "Chỉ khoản cá nhân của bạn"
+                    : "Chỉ khoản quỹ chung"
+              }
+              className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                scopeView === key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setScopeView(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto text-sm text-right space-y-0.5">
+          <div>
+            Tổng thu:{" "}
+            <span className="font-semibold text-green-600 dark:text-green-400">
+              +{fmt(totalIncome)} đ
+            </span>
+          </div>
+          <div>
+            Tổng chi:{" "}
+            <span className="font-semibold text-red-500">
+              -{fmt(totalExpense)} đ
+            </span>
+          </div>
         </div>
       </div>
 
@@ -722,7 +858,7 @@ export default function TransactionsPage() {
         <p className="text-sm text-muted-foreground py-8 text-center">
           Đang tải...
         </p>
-      ) : visibleTransactions.length === 0 ? (
+      ) : sessionFilteredTx.length === 0 ? (
         <Card className="flex flex-col items-center justify-center gap-4 py-16 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
             <Receipt className="h-7 w-7 text-muted-foreground/50" />
@@ -734,10 +870,23 @@ export default function TransactionsPage() {
             </p>
           </div>
         </Card>
+      ) : visibleTransactions.length === 0 ? (
+        <Card className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+            <Receipt className="h-7 w-7 text-muted-foreground/50" />
+          </div>
+          <div>
+            <p className="font-medium">Không có giao dịch phù hợp</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Đổi tab quỹ (Tất cả / Cá nhân / Quỹ chung) hoặc chọn session khác.
+            </p>
+          </div>
+        </Card>
       ) : (
         <TransactionsTable
           transactions={visibleTransactions}
           totalExpense={totalExpense}
+          totalIncome={totalIncome}
           user={user}
           family={family}
           editingId={editingId}
@@ -751,6 +900,8 @@ export default function TransactionsPage() {
           setEditNote={setEditNote}
           editDate={editDate}
           setEditDate={setEditDate}
+          editTxType={editTxType}
+          onEditTxTypeChange={handleEditTxTypeChange}
           editSaving={editSaving}
           saveEdit={saveEdit}
           setEditingId={setEditingId}
@@ -767,6 +918,7 @@ const TX_PAGE_SIZE = 10;
 function TransactionsTable({
   transactions,
   totalExpense,
+  totalIncome,
   user,
   family,
   editingId,
@@ -780,6 +932,8 @@ function TransactionsTable({
   setEditNote,
   editDate,
   setEditDate,
+  editTxType,
+  onEditTxTypeChange,
   editSaving,
   saveEdit,
   setEditingId,
@@ -788,6 +942,7 @@ function TransactionsTable({
 }: {
   transactions: Transaction[];
   totalExpense: number;
+  totalIncome: number;
   user: import("@/lib/stores/authStore").AuthUser | null;
   family: import("@/hooks/useFamily").Family | null;
   editingId: string | null;
@@ -801,6 +956,8 @@ function TransactionsTable({
   setEditNote: (v: string) => void;
   editDate: string;
   setEditDate: (v: string) => void;
+  editTxType: "expense" | "income";
+  onEditTxTypeChange: (t: "expense" | "income") => void;
   editSaving: boolean;
   saveEdit: () => void;
   setEditingId: (v: string | null) => void;
@@ -845,19 +1002,48 @@ function TransactionsTable({
                     ? "Tôi"
                     : family?.members[tx.userId]?.name || tx.userId.slice(0, 6)}
                 </TableCell>
-                <TableCell>
-                  <Select value={editCategory} onValueChange={setEditCategory}>
-                    <SelectTrigger size="sm" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <TableCell className="align-top p-1">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex gap-0.5">
+                      <button
+                        type="button"
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                          editTxType === "expense"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                        onClick={() => onEditTxTypeChange("expense")}
+                      >
+                        Chi
+                      </button>
+                      <button
+                        type="button"
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                          editTxType === "income"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                        onClick={() => onEditTxTypeChange("income")}
+                      >
+                        Thu
+                      </button>
+                    </div>
+                    <Select value={editCategory} onValueChange={setEditCategory}>
+                      <SelectTrigger size="sm" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(editTxType === "income"
+                          ? INCOME_CATEGORIES
+                          : CATEGORIES
+                        ).map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {tx.spendingType === "shared_pool" ? "Chung" : "Cá nhân"}
@@ -880,7 +1066,11 @@ function TransactionsTable({
                 </TableCell>
                 <TableCell className="text-right">
                   <CurrencyInput
-                    className="h-7 w-full text-xs text-right tabular-nums"
+                    className={`h-7 w-full text-xs text-right tabular-nums ${
+                      editTxType === "income"
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-red-500"
+                    }`}
                     value={editAmount}
                     onChange={setEditAmount}
                   />
@@ -915,7 +1105,20 @@ function TransactionsTable({
                     ? "Tôi"
                     : family?.members[tx.userId]?.name || tx.userId.slice(0, 6)}
                 </TableCell>
-                <TableCell className="text-xs">{tx.category}</TableCell>
+                <TableCell className="text-xs">
+                  <span className="inline-flex flex-wrap items-center gap-1">
+                    <span
+                      className={`rounded px-1 py-0 text-[9px] font-semibold ${
+                        tx.type === "income"
+                          ? "bg-green-500/15 text-green-700 dark:text-green-400"
+                          : "bg-red-500/15 text-red-700 dark:text-red-400"
+                      }`}
+                    >
+                      {tx.type === "income" ? "Thu" : "Chi"}
+                    </span>
+                    {tx.category}
+                  </span>
+                </TableCell>
                 <TableCell>
                   <span
                     className={`text-[10px] font-medium ${
@@ -937,11 +1140,20 @@ function TransactionsTable({
                     </span>
                   </div>
                 </TableCell>
-                <TableCell className="text-right font-medium tabular-nums text-red-500">
-                  -{fmt(tx.amount)} đ
+                <TableCell
+                  className={`text-right font-medium tabular-nums ${
+                    tx.type === "income"
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-red-500"
+                  }`}
+                >
+                  {tx.type === "income" ? "+" : "-"}
+                  {fmt(tx.amount)} đ
                 </TableCell>
                 <TableCell className="text-right">
-                  {tx.userId === user?.uid || user?.role === "owner" ? (
+                  {tx.userId === user?.uid ||
+                  (isFamilyOwner(user?.uid, family) &&
+                    tx.spendingType === "shared_pool") ? (
                     <div className="flex items-center justify-end gap-1">
                       <button
                         type="button"
@@ -975,7 +1187,18 @@ function TransactionsTable({
         <TableFooter>
           <TableRow>
             <TableCell colSpan={5} className="text-right text-xs text-muted-foreground">
-              Tổng ({transactions.length} giao dịch)
+              Tổng thu (
+              {transactions.filter((t) => t.type === "income").length} giao dịch)
+            </TableCell>
+            <TableCell className="text-right tabular-nums text-xs text-green-600 dark:text-green-400">
+              +{fmt(totalIncome)} đ
+            </TableCell>
+            <TableCell />
+          </TableRow>
+          <TableRow>
+            <TableCell colSpan={5} className="text-right text-xs text-muted-foreground">
+              Tổng chi (
+              {transactions.filter((t) => t.type === "expense").length} giao dịch)
             </TableCell>
             <TableCell className="text-right tabular-nums text-xs text-red-500">
               -{fmt(totalExpense)} đ
