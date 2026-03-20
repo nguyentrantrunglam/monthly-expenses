@@ -376,6 +376,11 @@ export default function CalendarPage() {
                 </DialogTitle>
               </DialogHeader>
               <form onSubmit={handleCreateEvent} className="space-y-4 mt-4">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Mọi thành viên (kể cả bạn) sẽ nhận{" "}
+                  <span className="font-medium text-foreground">lời mời qua email</span>{" "}
+                  đăng nhập từ Google Calendar.
+                </p>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-medium text-muted-foreground">
                     Tiêu đề

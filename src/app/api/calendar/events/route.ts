@@ -1,7 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as admin from "firebase-admin";
 import { createCalendarClient } from "@/lib/google-calendar";
 import { verifyIdToken, getFirebaseAdmin } from "@/lib/firebase/admin";
 import { getFirestore } from "firebase-admin/firestore";
+
+/** Email mời: mọi thành viên trong gia đình (gồm người vừa tạo sự kiện trên app). */
+async function getFamilyMemberAttendeeEmails(familyId: string): Promise<string[]> {
+  const db = getFirestore();
+  const fam = await db.collection("families").doc(familyId).get();
+  if (!fam.exists) return [];
+  const members = fam.data()?.members as Record<string, unknown> | undefined;
+  if (!members) return [];
+
+  const app = getFirebaseAdmin();
+  const auth = admin.auth(app);
+
+  const memberUids = Object.keys(members);
+  const raw = await Promise.all(
+    memberUids.map(async (memberUid) => {
+      try {
+        return (await auth.getUser(memberUid)).email ?? null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const em of raw) {
+    if (!em || !em.includes("@")) continue;
+    const lower = em.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    out.push(em);
+  }
+  return out;
+}
 
 async function getFamilyCalendarTokens(familyId: string) {
   getFirebaseAdmin();
@@ -144,12 +179,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const attendeeEmails = await getFamilyMemberAttendeeEmails(familyId);
+
     const calendar = createCalendarClient(tokens);
     const event: {
       summary: string;
       description?: string;
       location?: string;
       colorId?: string;
+      attendees?: { email: string }[];
       start: { dateTime?: string; date?: string; timeZone?: string };
       end: { dateTime?: string; date?: string; timeZone?: string };
     } = {
@@ -160,6 +198,9 @@ export async function POST(req: NextRequest) {
     if (description) event.description = description;
     if (location) event.location = location;
     if (colorId) event.colorId = colorId;
+    if (attendeeEmails.length > 0) {
+      event.attendees = attendeeEmails.map((email) => ({ email }));
+    }
 
     const startDate = new Date(start);
     const endDate = end ? new Date(end) : new Date(startDate.getTime() + 60 * 60 * 1000);
@@ -177,6 +218,7 @@ export async function POST(req: NextRequest) {
     const res = await calendar.events.insert({
       calendarId: "primary",
       requestBody: event,
+      sendUpdates: attendeeEmails.length > 0 ? "all" : undefined,
     });
 
     return NextResponse.json(res.data);
