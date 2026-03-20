@@ -130,6 +130,44 @@ function getEventDateRange(ev: CalendarEvent): string[] {
   return dates;
 }
 
+/** Gửi lên API dạng ISO (UTC); server nhận `T` và gán timezone VN). */
+function combineLocalDateTimeToIso(dateYmd: string, timeHm: string): string {
+  const [y, mo, d] = dateYmd.split("-").map(Number);
+  const parts = (timeHm || "09:00").split(":");
+  const h = parseInt(parts[0] ?? "9", 10);
+  const mi = parseInt(parts[1] ?? "0", 10);
+  return new Date(y, mo - 1, d, h, mi, 0, 0).toISOString();
+}
+
+function formatEventWhen(ev: CalendarEvent): string {
+  const startRaw = ev.start?.dateTime ?? ev.start?.date;
+  if (!startRaw) return "—";
+  const endRaw = ev.end?.dateTime ?? ev.end?.date;
+  const allDay = !!ev.start?.date && !ev.start?.dateTime;
+  try {
+    if (allDay) {
+      const s = parseISO(
+        startRaw.length > 10 ? startRaw.slice(0, 10) : startRaw
+      );
+      const e = endRaw
+        ? parseISO(endRaw.length > 10 ? endRaw.slice(0, 10) : endRaw)
+        : null;
+      let line = format(s, "EEEE, dd/MM/yyyy", { locale: vi });
+      if (e && format(e, "yyyy-MM-dd") !== format(s, "yyyy-MM-dd")) {
+        line += ` → ${format(e, "EEEE, dd/MM/yyyy", { locale: vi })}`;
+      }
+      return `${line} (cả ngày)`;
+    }
+    const s = parseISO(startRaw);
+    const e = endRaw ? parseISO(endRaw) : null;
+    let line = format(s, "EEEE, dd/MM/yyyy HH:mm", { locale: vi });
+    if (e) line += ` → ${format(e, "HH:mm")}`;
+    return line;
+  } catch {
+    return String(startRaw);
+  }
+}
+
 export default function CalendarPage() {
   const searchParams = useSearchParams();
   const user = useAuthStore((s) => s.user);
@@ -145,8 +183,11 @@ export default function CalendarPage() {
   const [newDesc, setNewDesc] = useState("");
   const [newStart, setNewStart] = useState("");
   const [newEnd, setNewEnd] = useState("");
+  const [newStartTime, setNewStartTime] = useState("09:00");
+  const [newEndTime, setNewEndTime] = useState("10:00");
   const [newLocation, setNewLocation] = useState("");
   const [newColorId, setNewColorId] = useState<string>("");
+  const [detailEvent, setDetailEvent] = useState<CalendarEvent | null>(null);
 
   const connected = status?.connected ?? false;
   const isOwner =
@@ -216,6 +257,8 @@ export default function CalendarPage() {
       setNewDesc("");
       setNewStart("");
       setNewEnd("");
+      setNewStartTime("09:00");
+      setNewEndTime("10:00");
       setNewLocation("");
       setNewColorId("");
     }
@@ -225,11 +268,15 @@ export default function CalendarPage() {
     e.preventDefault();
     if (!newSummary.trim() || !newStart) return;
     try {
+      const startIso = combineLocalDateTimeToIso(newStart, newStartTime);
+      const endIso = newEnd
+        ? combineLocalDateTimeToIso(newEnd, newEndTime)
+        : undefined;
       await createEvent.mutateAsync({
         summary: newSummary.trim(),
         description: newDesc.trim() || undefined,
-        start: newStart,
-        end: newEnd || undefined,
+        start: startIso,
+        end: endIso,
         location: newLocation.trim() || undefined,
         colorId: newColorId || undefined,
       });
@@ -402,26 +449,49 @@ export default function CalendarPage() {
                     placeholder="Thêm mô tả"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-medium text-muted-foreground">
                       Bắt đầu
                     </label>
-                    <DatePicker
-                      value={newStart}
-                      onChange={setNewStart}
-                      placeholder="Chọn ngày"
-                    />
+                    <div className="flex gap-2">
+                      <DatePicker
+                        value={newStart}
+                        onChange={setNewStart}
+                        placeholder="Ngày"
+                        className="min-w-0 flex-1"
+                      />
+                      <Input
+                        type="time"
+                        value={newStartTime}
+                        onChange={(e) => setNewStartTime(e.target.value)}
+                        className="h-8 w-[6.5rem] shrink-0 px-2"
+                        aria-label="Giờ bắt đầu"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-medium text-muted-foreground">
                       Kết thúc (tùy chọn)
                     </label>
-                    <DatePicker
-                      value={newEnd}
-                      onChange={setNewEnd}
-                      placeholder="Chọn ngày"
-                    />
+                    <div className="flex gap-2">
+                      <DatePicker
+                        value={newEnd}
+                        onChange={setNewEnd}
+                        placeholder="Ngày"
+                        className="min-w-0 flex-1"
+                      />
+                      <Input
+                        type="time"
+                        value={newEndTime}
+                        onChange={(e) => setNewEndTime(e.target.value)}
+                        className="h-8 w-[6.5rem] shrink-0 px-2"
+                        aria-label="Giờ kết thúc"
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Để trống ngày kết thúc → mặc định +1 giờ sau giờ bắt đầu.
+                    </p>
                   </div>
                 </div>
                 <div className="space-y-1.5">
@@ -470,6 +540,75 @@ export default function CalendarPage() {
           </Dialog>
         </div>
       </div>
+
+      <Dialog
+        open={detailEvent !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailEvent(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="pr-8">
+              {detailEvent?.summary ?? "Sự kiện"}
+            </DialogTitle>
+          </DialogHeader>
+          {detailEvent && (
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  Thời gian
+                </p>
+                <p className="mt-0.5">{formatEventWhen(detailEvent)}</p>
+              </div>
+              {detailEvent.location ? (
+                <div>
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    Địa điểm
+                  </p>
+                  <p className="mt-0.5">{detailEvent.location}</p>
+                </div>
+              ) : null}
+              {detailEvent.description ? (
+                <div>
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    Mô tả
+                  </p>
+                  <p className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
+                    {detailEvent.description}
+                  </p>
+                </div>
+              ) : null}
+              {detailEvent.isHoliday ? (
+                <p className="text-xs text-muted-foreground">
+                  Sự kiện ngày lễ từ Google Calendar.
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-2 pt-1">
+                {detailEvent.htmlLink ? (
+                  <Button asChild className="gap-1.5">
+                    <a
+                      href={detailEvent.htmlLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Xem trên Google Calendar
+                    </a>
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDetailEvent(null)}
+                >
+                  Đóng
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Card className="overflow-hidden relative">
         {eventsLoading && (
@@ -528,38 +667,30 @@ export default function CalendarPage() {
                     const isHoliday = ev.isHoliday ?? false;
                     const content = (
                       <>
-                        <span className="truncate flex-1">
+                        <span className="truncate flex-1 text-left">
                           {!isFirst ? "… " : ""}{ev.summary}
                         </span>
-                        {!isHoliday && ev.htmlLink && (
-                          <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-80" />
-                        )}
+                        <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-70" />
                       </>
                     );
                     const style = isHoliday
                       ? { backgroundColor: "#dc2626", color: "#ffffff" }
                       : getEventStyle(ev.colorId, ev.id ?? ev.summary);
-                    return ev.htmlLink && !isHoliday ? (
-                      <a
+                    return (
+                      <button
                         key={`${ev.id}-${key}`}
-                        href={ev.htmlLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold truncate hover:opacity-90 transition-opacity"
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDetailEvent(ev);
+                        }}
+                        className="flex w-full min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold truncate hover:opacity-90 transition-opacity cursor-pointer"
                         style={style}
                         title={ev.summary}
                       >
                         {content}
-                      </a>
-                    ) : (
-                      <span
-                        key={`${ev.id}-${key}`}
-                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold truncate"
-                        style={style}
-                        title={ev.summary}
-                      >
-                        {content}
-                      </span>
+                      </button>
                     );
                   })}
                   {dayEvents.length > 3 && (
