@@ -93,6 +93,7 @@ export default function TransactionsPage() {
   const [editCategory, setEditCategory] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editNote, setEditNote] = useState("");
+  const [editDate, setEditDate] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -272,12 +273,14 @@ export default function TransactionsPage() {
     setEditAmount(String(tx.amount));
     setEditCategory(tx.category);
     setEditNote(tx.note);
+    setEditDate(tx.date || new Date().toISOString().slice(0, 10));
   };
 
   const saveEdit = async () => {
     if (!editingId) return;
     const parsed = parseCurrencyInput(editAmount);
     if (!parsed || parsed <= 0) return;
+    if (!editDate || !/^\d{4}-\d{2}-\d{2}$/.test(editDate)) return;
     setEditSaving(true);
     try {
       await updateTransaction(editingId, {
@@ -285,6 +288,7 @@ export default function TransactionsPage() {
         amount: parsed,
         category: editCategory,
         note: editNote,
+        date: editDate,
       });
       setEditingId(null);
     } finally {
@@ -745,6 +749,8 @@ export default function TransactionsPage() {
           setEditCategory={setEditCategory}
           editNote={editNote}
           setEditNote={setEditNote}
+          editDate={editDate}
+          setEditDate={setEditDate}
           editSaving={editSaving}
           saveEdit={saveEdit}
           setEditingId={setEditingId}
@@ -772,6 +778,8 @@ function TransactionsTable({
   setEditCategory,
   editNote,
   setEditNote,
+  editDate,
+  setEditDate,
   editSaving,
   saveEdit,
   setEditingId,
@@ -791,6 +799,8 @@ function TransactionsTable({
   setEditCategory: (v: string) => void;
   editNote: string;
   setEditNote: (v: string) => void;
+  editDate: string;
+  setEditDate: (v: string) => void;
   editSaving: boolean;
   saveEdit: () => void;
   setEditingId: (v: string | null) => void;
@@ -809,7 +819,7 @@ function TransactionsTable({
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-muted/40">
-            <TableHead className="text-xs w-24">Ngày</TableHead>
+            <TableHead className="text-xs w-[7.5rem]">Ngày</TableHead>
             <TableHead className="text-xs w-24">Người chi</TableHead>
             <TableHead className="text-xs w-28">Danh mục</TableHead>
             <TableHead className="text-xs w-20">Nguồn</TableHead>
@@ -822,7 +832,14 @@ function TransactionsTable({
           {paged.map((tx) =>
             editingId === tx.id ? (
               <TableRow key={tx.id} className="bg-muted/20">
-                <TableCell className="text-xs">{tx.date}</TableCell>
+                <TableCell className="p-1 align-middle">
+                  <DatePicker
+                    value={editDate}
+                    onChange={setEditDate}
+                    className="h-7 text-xs px-1.5"
+                    placeholder="Ngày"
+                  />
+                </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {tx.userId === user?.uid
                     ? "Tôi"
