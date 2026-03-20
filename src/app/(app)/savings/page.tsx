@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -35,7 +36,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
@@ -55,21 +66,58 @@ interface Withdrawal {
   createdAt: { toDate?: () => Date } | string;
 }
 
-interface GoldPurchase {
-  id: string;
-  date: string; // YYYY-MM-DD
-  weight: number; // chỉ
-  pricePerUnit: number; // VND / chỉ
-  totalCost: number; // VND
-  note?: string;
+type GoldEntryType = "purchase" | "holding" | "sale";
+
+const HOLDING_NOTE = "Ghi nhận số vàng đang nắm giữ";
+
+function resolveGoldEntryType(data: {
+  entryType?: string;
+  note?: string | null;
+}): GoldEntryType {
+  if (data.entryType === "sale") return "sale";
+  if (data.entryType === "holding") return "holding";
+  if (data.entryType === "purchase") return "purchase";
+  if (data.note === HOLDING_NOTE) return "holding";
+  return "purchase";
 }
 
-interface GoldValuePoint {
+interface GoldLedgerEntry {
   id: string;
-  createdAt: string;
-  totalValue: number;
-  totalWeight: number;
-  pricePerUnit: number;
+  date: string; // YYYY-MM-DD
+  weight: number; // chỉ (luôn dương)
+  pricePerUnit: number; // VND / chỉ — mua/có sẵn: giá ghi nhận; bán: giá bán
+  totalCost: number; // VND — mua/có sẵn; bán thì 0
+  totalProceeds?: number; // VND — chỉ khi bán
+  note?: string;
+  entryType: GoldEntryType;
+}
+
+function entryMoneyLabel(g: GoldLedgerEntry): number {
+  if (g.entryType === "sale") {
+    return g.totalProceeds ?? Math.round(g.weight * g.pricePerUnit);
+  }
+  return g.totalCost;
+}
+
+interface BtmhGoldChartRow {
+  labelShort: string;
+  labelFull: string;
+  rate: number;
+  sell: number;
+}
+
+interface BtmhGoldChartResponse {
+  labels?: string[];
+  data?: { rate?: string[]; sell?: string[] };
+}
+
+type GoldChartTimeType = "day" | "month";
+
+function shortGoldChartLabel(raw: string): string {
+  const d = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (d) return `${d[3]}/${d[2]}`;
+  if (raw.length > 14) return raw.replace(/^\d{4}-/, "").slice(0, 11);
+  return raw;
 }
 
 export default function SavingsPage() {
@@ -78,7 +126,7 @@ export default function SavingsPage() {
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [loading, setLoading] = useState(true);
   const [goldLoading, setGoldLoading] = useState(true);
-  const [goldPurchases, setGoldPurchases] = useState<GoldPurchase[]>([]);
+  const [goldLedger, setGoldLedger] = useState<GoldLedgerEntry[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
 
   const [goldDate, setGoldDate] = useState(() => {
@@ -95,15 +143,42 @@ export default function SavingsPage() {
   const [withdrawNote, setWithdrawNote] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
   const [activeTab, setActiveTab] = useState<"cash" | "gold">("cash");
-  const [goldMarketPrice, setGoldMarketPrice] = useState("");
-  const [goldHistory, setGoldHistory] = useState<GoldValuePoint[]>([]);
+  const [firestoreGoldSpot, setFirestoreGoldSpot] = useState<number | null>(
+    null,
+  );
+  const [goldChartSeries, setGoldChartSeries] = useState<BtmhGoldChartRow[]>(
+    [],
+  );
+  const [btmhSpotRate, setBtmhSpotRate] = useState<number | null>(null);
+  const [btmhSpotSell, setBtmhSpotSell] = useState<number | null>(null);
+  const [goldChartLoading, setGoldChartLoading] = useState(false);
+  const [goldChartError, setGoldChartError] = useState<string | null>(null);
+  const [goldTimeType, setGoldTimeType] = useState<GoldChartTimeType>("day");
   const [extraAmount, setExtraAmount] = useState("");
   const [extraNote, setExtraNote] = useState("");
   const [extraDepositDate, setExtraDepositDate] = useState("");
   const [addingExtra, setAddingExtra] = useState(false);
   const [existingGoldWeight, setExistingGoldWeight] = useState("");
   const [addingExistingGold, setAddingExistingGold] = useState(false);
-  const [updatingGoldPrice, setUpdatingGoldPrice] = useState(false);
+
+  const [saleDate, setSaleDate] = useState(() => {
+    const d = new Date();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${d.getFullYear()}-${m}-${day}`;
+  });
+  const [saleWeight, setSaleWeight] = useState("");
+  const [salePricePerUnit, setSalePricePerUnit] = useState("");
+  const [saleNote, setSaleNote] = useState("");
+  const [saleSubmitting, setSaleSubmitting] = useState(false);
+
+  const [editPurchaseOpen, setEditPurchaseOpen] = useState(false);
+  const [editPurchase, setEditPurchase] = useState<GoldLedgerEntry | null>(null);
+  const [editGoldDate, setEditGoldDate] = useState("");
+  const [editGoldWeight, setEditGoldWeight] = useState("");
+  const [editGoldPricePerUnit, setEditGoldPricePerUnit] = useState("");
+  const [editGoldNote, setEditGoldNote] = useState("");
+  const [purchaseSaving, setPurchaseSaving] = useState(false);
 
   useEffect(() => {
     if (!user?.familyId) return;
@@ -125,58 +200,94 @@ export default function SavingsPage() {
     return () => unsub();
   }, [user?.familyId]);
 
-  // Load last saved market gold price for this family
+  // Giá đã lưu lần trước — chỉ dùng dự phòng khi API không tải được
   useEffect(() => {
     if (!user?.familyId) return;
     const db = getFirestoreDb();
     const ref = doc(db, "families", user.familyId, "goldSettings", "main");
     const unsub = onSnapshot(ref, (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data() as { lastPricePerUnit?: number | null };
-      if (data.lastPricePerUnit && data.lastPricePerUnit > 0) {
-        setGoldMarketPrice(String(data.lastPricePerUnit));
+      if (!snap.exists()) {
+        setFirestoreGoldSpot(null);
+        return;
       }
+      const data = snap.data() as { lastPricePerUnit?: number | null };
+      const p = data.lastPricePerUnit;
+      setFirestoreGoldSpot(p && p > 0 ? p : null);
     });
     return () => unsub();
   }, [user?.familyId]);
 
-  // Load historical gold value snapshots
-  useEffect(() => {
+  const loadBtmhChart = useCallback(async () => {
     if (!user?.familyId) return;
-    const db = getFirestoreDb();
-    const col = collection(
-      db,
-      "families",
-      user.familyId,
-      "goldValueHistory",
-    );
-    const q = query(col, orderBy("createdAt", "asc"));
-    const unsub = onSnapshot(q, (snap) => {
-      const list: GoldValuePoint[] = [];
-      snap.forEach((d) => {
-        const data = d.data() as {
-          createdAt?: { toDate?: () => Date } | string;
-          totalValue?: number;
-          totalWeight?: number;
-          pricePerUnit?: number;
-        };
-        const raw = data.createdAt;
-        const ts =
-          typeof raw === "string"
-            ? raw
-            : raw?.toDate?.()?.toISOString() ?? "";
-        list.push({
-          id: d.id,
-          createdAt: ts,
-          totalValue: data.totalValue ?? 0,
-          totalWeight: data.totalWeight ?? 0,
-          pricePerUnit: data.pricePerUnit ?? 0,
-        });
-      });
-      setGoldHistory(list);
-    });
-    return () => unsub();
-  }, [user?.familyId]);
+    setGoldChartLoading(true);
+    setGoldChartError(null);
+    try {
+      const res = await fetch(
+        `/api/gold/btmh-chart?gold_type=KGB&time_type=${goldTimeType}&init=false`,
+      );
+      const json = (await res.json()) as
+        | BtmhGoldChartResponse
+        | { error?: string };
+      if (
+        !res.ok ||
+        !json ||
+        typeof json !== "object" ||
+        !("labels" in json) ||
+        !Array.isArray((json as BtmhGoldChartResponse).labels)
+      ) {
+        throw new Error("bad_response");
+      }
+      const labels = (json as BtmhGoldChartResponse).labels ?? [];
+      const rates = (json as BtmhGoldChartResponse).data?.rate ?? [];
+      const sells = (json as BtmhGoldChartResponse).data?.sell ?? [];
+      const n = Math.min(labels.length, rates.length, sells.length);
+      const series: BtmhGoldChartRow[] = [];
+      for (let i = 0; i < n; i++) {
+        const rate = Math.round(Number(String(rates[i]).replace(/,/g, "")));
+        const sell = Math.round(Number(String(sells[i]).replace(/,/g, "")));
+        const raw = String(labels[i] ?? "");
+        const labelShort = shortGoldChartLabel(raw);
+        series.push({ labelShort, labelFull: raw, rate, sell });
+      }
+      setGoldChartSeries(series);
+      if (n > 0) {
+        const lastRate = Math.round(
+          Number(String(rates[n - 1]).replace(/,/g, "")),
+        );
+        const lastSell = Math.round(
+          Number(String(sells[n - 1]).replace(/,/g, "")),
+        );
+        setBtmhSpotRate(lastRate);
+        setBtmhSpotSell(lastSell);
+        if (user?.familyId) {
+          const db = getFirestoreDb();
+          void setDoc(
+            doc(db, "families", user.familyId, "goldSettings", "main"),
+            {
+              lastPricePerUnit: lastRate,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          ).catch(() => {});
+        }
+      } else {
+        setBtmhSpotRate(null);
+        setBtmhSpotSell(null);
+      }
+    } catch {
+      setGoldChartError("Không tải được giá từ Bảo Tín Mạnh Hải.");
+      setGoldChartSeries([]);
+      setBtmhSpotRate(null);
+      setBtmhSpotSell(null);
+    } finally {
+      setGoldChartLoading(false);
+    }
+  }, [user?.familyId, goldTimeType]);
+
+  useEffect(() => {
+    if (activeTab !== "gold" || !user?.familyId) return;
+    void loadBtmhChart();
+  }, [activeTab, user?.familyId, loadBtmhChart]);
 
   useEffect(() => {
     if (!user?.familyId) return;
@@ -184,14 +295,16 @@ export default function SavingsPage() {
     const col = collection(db, "families", user.familyId, "goldSavings");
     const q = query(col, orderBy("date", "desc"), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(q, (snap) => {
-      const list: GoldPurchase[] = [];
+      const list: GoldLedgerEntry[] = [];
       snap.forEach((d) => {
         const data = d.data() as {
           date?: string;
           weight?: number;
           pricePerUnit?: number;
           totalCost?: number;
+          totalProceeds?: number;
           note?: string;
+          entryType?: string;
         };
         list.push({
           id: d.id,
@@ -199,14 +312,18 @@ export default function SavingsPage() {
           weight: data.weight ?? 0,
           pricePerUnit: data.pricePerUnit ?? 0,
           totalCost: data.totalCost ?? 0,
+          totalProceeds: data.totalProceeds,
           note: data.note,
+          entryType: resolveGoldEntryType(data),
         });
       });
-      setGoldPurchases(list);
+      setGoldLedger(list);
       setGoldLoading(false);
     });
     return () => unsub();
   }, [user?.familyId]);
+
+  const effectiveSpotRate = btmhSpotRate ?? firestoreGoldSpot;
 
   const handleAddGoldPurchase = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -226,56 +343,148 @@ export default function SavingsPage() {
         pricePerUnit,
         totalCost,
         note: goldNote.trim() || null,
+        entryType: "purchase",
         createdAt: serverTimestamp(),
       });
       setGoldWeight("");
       setGoldPricePerUnit("");
       setGoldNote("");
+      void loadBtmhChart();
     } finally {
       setSubmitting(false);
     }
   };
 
-  const saveGoldMarketPrice = async (value: string) => {
+  const handleAddGoldSale = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!user?.familyId) return;
-    setUpdatingGoldPrice(true);
-    try {
-      const numeric = parseCurrencyInput(value) || 0;
-      const db = getFirestoreDb();
-      const ref = doc(db, "families", user.familyId, "goldSettings", "main");
-      await setDoc(
-        ref,
-        {
-          lastPricePerUnit: numeric > 0 ? numeric : null,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
+    const weight =
+      Number(saleWeight.replace(/\s/g, "").replace(",", ".")) || 0;
+    const pricePerUnit = parseCurrencyInput(salePricePerUnit) || 0;
+    if (!saleDate || weight <= 0 || pricePerUnit <= 0) return;
 
-      // Also snapshot total portfolio value at this price
-      if (numeric > 0 && goldPurchases.length > 0) {
-        const totalWeight = goldPurchases.reduce(
-          (s, g) => s + g.weight,
-          0,
-        );
-        if (totalWeight > 0) {
-          const totalValue = Math.round(totalWeight * numeric);
-          const historyCol = collection(
-            db,
-            "families",
-            user.familyId,
-            "goldValueHistory",
-          );
-          await addDoc(historyCol, {
-            createdAt: serverTimestamp(),
-            totalValue,
-            totalWeight,
-            pricePerUnit: numeric,
-          });
-        }
-      }
+    const purchaseRows = goldLedger.filter((g) => g.entryType === "purchase");
+    const holdingRows = goldLedger.filter((g) => g.entryType === "holding");
+    const saleRows = goldLedger.filter((g) => g.entryType === "sale");
+    const wPur = purchaseRows.reduce((s, g) => s + g.weight, 0);
+    const wHold = holdingRows.reduce((s, g) => s + g.weight, 0);
+    const wSold = saleRows.reduce((s, g) => s + g.weight, 0);
+    const netAvail = wPur + wHold - wSold;
+    if (weight > netAvail + 1e-9) {
+      alert(
+        `Khối lượng bán vượt phần đang nắm giữ. Hiện còn tối đa ${netAvail.toFixed(2)} chỉ (đã trừ các lần bán trước).`,
+      );
+      return;
+    }
+
+    try {
+      setSaleSubmitting(true);
+      const db = getFirestoreDb();
+      const col = collection(db, "families", user.familyId, "goldSavings");
+      const totalProceeds = Math.round(weight * pricePerUnit);
+      await addDoc(col, {
+        date: saleDate,
+        weight,
+        pricePerUnit,
+        totalCost: 0,
+        totalProceeds,
+        note: saleNote.trim() || null,
+        entryType: "sale",
+        createdAt: serverTimestamp(),
+      });
+      setSaleWeight("");
+      setSalePricePerUnit("");
+      setSaleNote("");
+      void loadBtmhChart();
     } finally {
-      setUpdatingGoldPrice(false);
+      setSaleSubmitting(false);
+    }
+  };
+
+  const openEditPurchase = (g: GoldLedgerEntry) => {
+    setEditPurchase(g);
+    setEditGoldDate(g.date);
+    setEditGoldWeight(String(g.weight));
+    setEditGoldPricePerUnit(String(g.pricePerUnit));
+    setEditGoldNote(g.note ?? "");
+    setEditPurchaseOpen(true);
+  };
+
+  const handleUpdatePurchase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.familyId || !editPurchase) return;
+    const weight =
+      Number(editGoldWeight.replace(/\s/g, "").replace(",", ".")) || 0;
+    const pricePerUnit = parseCurrencyInput(editGoldPricePerUnit) || 0;
+    if (!editGoldDate || weight <= 0 || pricePerUnit <= 0) return;
+
+    if (editPurchase.entryType === "sale") {
+      const purchaseRows = goldLedger.filter((g) => g.entryType === "purchase");
+      const holdingRows = goldLedger.filter((g) => g.entryType === "holding");
+      const saleRows = goldLedger.filter(
+        (g) => g.entryType === "sale" && g.id !== editPurchase.id,
+      );
+      const wPur = purchaseRows.reduce((s, g) => s + g.weight, 0);
+      const wHold = holdingRows.reduce((s, g) => s + g.weight, 0);
+      const wSold = saleRows.reduce((s, g) => s + g.weight, 0);
+      const netAvail = wPur + wHold - wSold;
+      if (weight > netAvail + 1e-9) {
+        alert(
+          `Sau khi sửa, chỉ bán không được vượt ${netAvail.toFixed(2)} chỉ đang nắm giữ.`,
+        );
+        return;
+      }
+    }
+
+    setPurchaseSaving(true);
+    try {
+      const db = getFirestoreDb();
+      if (editPurchase.entryType === "sale") {
+        const totalProceeds = Math.round(weight * pricePerUnit);
+        await updateDoc(
+          doc(db, "families", user.familyId, "goldSavings", editPurchase.id),
+          {
+            date: editGoldDate,
+            weight,
+            pricePerUnit,
+            totalCost: 0,
+            totalProceeds,
+            note: editGoldNote.trim() || null,
+            entryType: "sale",
+          },
+        );
+      } else {
+        const totalCost = Math.round(weight * pricePerUnit);
+        await updateDoc(
+          doc(db, "families", user.familyId, "goldSavings", editPurchase.id),
+          {
+            date: editGoldDate,
+            weight,
+            pricePerUnit,
+            totalCost,
+            note: editGoldNote.trim() || null,
+            entryType: editPurchase.entryType,
+          },
+        );
+      }
+      setEditPurchaseOpen(false);
+      setEditPurchase(null);
+    } finally {
+      setPurchaseSaving(false);
+    }
+  };
+
+  const handleDeletePurchase = async (g: GoldLedgerEntry) => {
+    if (!user?.familyId) return;
+    if (!confirm("Xóa giao dịch vàng này?")) return;
+    try {
+      const db = getFirestoreDb();
+      await deleteDoc(
+        doc(db, "families", user.familyId, "goldSavings", g.id),
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Không xóa được giao dịch.");
     }
   };
 
@@ -413,7 +622,7 @@ export default function SavingsPage() {
     if (!user?.familyId) return;
     const weight =
       Number(existingGoldWeight.replace(/\s/g, "").replace(",", ".")) || 0;
-    const pricePerUnit = parseCurrencyInput(goldMarketPrice) || 0;
+    const pricePerUnit = effectiveSpotRate ?? 0;
     if (weight <= 0 || pricePerUnit <= 0) return;
 
     try {
@@ -430,7 +639,8 @@ export default function SavingsPage() {
         weight,
         pricePerUnit,
         totalCost,
-        note: "Ghi nhận số vàng đang nắm giữ",
+        note: HOLDING_NOTE,
+        entryType: "holding",
         createdAt: serverTimestamp(),
       });
       setExistingGoldWeight("");
@@ -828,107 +1038,347 @@ export default function SavingsPage() {
             <div>
               <h2 className="text-sm font-medium">Tiết kiệm vàng</h2>
               <p className="text-xs text-muted-foreground">
-                Lưu lại lịch sử mua vàng để theo dõi giá vốn và khối lượng nắm giữ.
+                Mua: giá vốn và lãi/lỗ trên phần còn nắm. Có sẵn: chỉ cộng chỉ và giá
+                trị, không lãi/lỗ. Bán: trừ chỉ đang nắm, ghi tiền thu.
               </p>
             </div>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button size="sm" className="text-xs">
-                  Thêm giao dịch vàng
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Thêm giao dịch vàng</DialogTitle>
-                  <DialogDescription className="text-xs">
-                    Nhập thông tin lần mua vàng để cập nhật lịch sử và giá vốn.
-                  </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleAddGoldPurchase} className="space-y-3 mt-2">
-                  <div className="space-y-1">
-                    <p className="text-[11px] font-medium text-muted-foreground">
-                      Ngày mua
-                    </p>
-                    <Input
-                      type="date"
-                      className="h-8 text-xs"
-                      value={goldDate}
-                      onChange={(e) => setGoldDate(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <div className="flex-1 space-y-1">
+            <div className="flex flex-wrap justify-end gap-2">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="text-xs">
+                    Thêm giao dịch vàng
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Thêm giao dịch vàng</DialogTitle>
+                    <DialogDescription className="text-xs">
+                      Mỗi lần mua mới: nhập ngày, chỉ và giá/chỉ để theo dõi giá vốn
+                      và lãi/lỗ.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleAddGoldPurchase} className="space-y-3 mt-2">
+                    <div className="space-y-1">
                       <p className="text-[11px] font-medium text-muted-foreground">
-                        Khối lượng (chỉ)
+                        Ngày mua
+                      </p>
+                      <Input
+                        type="date"
+                        className="h-8 text-xs"
+                        value={goldDate}
+                        onChange={(e) => setGoldDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="flex-1 space-y-1">
+                        <p className="text-[11px] font-medium text-muted-foreground">
+                          Khối lượng (chỉ)
+                        </p>
+                        <Input
+                          className="h-8 text-xs"
+                          inputMode="decimal"
+                          placeholder="Ví dụ: 2.5"
+                          value={goldWeight}
+                          onChange={(e) => setGoldWeight(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <p className="text-[11px] font-medium text-muted-foreground">
+                          Giá/chỉ (đ)
+                        </p>
+                        <CurrencyInput
+                          className="h-8 text-xs"
+                          placeholder="Ví dụ: 7,000,000"
+                          value={goldPricePerUnit}
+                          onChange={setGoldPricePerUnit}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        Ghi chú (tùy chọn)
                       </p>
                       <Input
                         className="h-8 text-xs"
-                        inputMode="decimal"
-                        placeholder="Ví dụ: 2.5"
-                        value={goldWeight}
-                        onChange={(e) => setGoldWeight(e.target.value)}
+                        placeholder="Loại vàng, cửa hàng..."
+                        value={goldNote}
+                        onChange={(e) => setGoldNote(e.target.value)}
                       />
                     </div>
-                    <div className="flex-1 space-y-1">
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={submitting}
+                        className="text-xs"
+                      >
+                        {submitting ? "Đang lưu..." : "Lưu giao dịch"}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline" className="text-xs">
+                    Ghi nhận bán vàng
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Ghi nhận bán vàng</DialogTitle>
+                    <DialogDescription className="text-xs">
+                      Số chỉ bán không được vượt tổng đang nắm (mua + có sẵn − đã bán
+                      trước). Nhập giá bán mỗi chỉ (tiệm thu).
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleAddGoldSale} className="space-y-3 mt-2">
+                    <div className="space-y-1">
                       <p className="text-[11px] font-medium text-muted-foreground">
-                        Giá/chỉ (đ)
+                        Ngày bán
                       </p>
-                      <CurrencyInput
+                      <Input
+                        type="date"
                         className="h-8 text-xs"
-                        placeholder="Ví dụ: 7,000,000"
-                        value={goldPricePerUnit}
-                        onChange={setGoldPricePerUnit}
+                        value={saleDate}
+                        onChange={(e) => setSaleDate(e.target.value)}
                       />
                     </div>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[11px] font-medium text-muted-foreground">
-                      Ghi chú (tùy chọn)
-                    </p>
-                    <Input
-                      className="h-8 text-xs"
-                      placeholder="Loại vàng, cửa hàng..."
-                      value={goldNote}
-                      onChange={(e) => setGoldNote(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2 pt-1">
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={submitting}
-                      className="text-xs"
-                    >
-                      {submitting ? "Đang lưu..." : "Lưu giao dịch"}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+                    <div className="flex gap-2">
+                      <div className="flex-1 space-y-1">
+                        <p className="text-[11px] font-medium text-muted-foreground">
+                          Khối lượng bán (chỉ)
+                        </p>
+                        <Input
+                          className="h-8 text-xs"
+                          inputMode="decimal"
+                          placeholder="Ví dụ: 1"
+                          value={saleWeight}
+                          onChange={(e) => setSaleWeight(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <p className="text-[11px] font-medium text-muted-foreground">
+                          Giá bán/chỉ (đ)
+                        </p>
+                        <CurrencyInput
+                          className="h-8 text-xs"
+                          placeholder="Ví dụ: 7,200,000"
+                          value={salePricePerUnit}
+                          onChange={setSalePricePerUnit}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        Ghi chú (tùy chọn)
+                      </p>
+                      <Input
+                        className="h-8 text-xs"
+                        placeholder="Cửa hàng, lý do..."
+                        value={saleNote}
+                        onChange={(e) => setSaleNote(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={saleSubmitting}
+                        className="text-xs"
+                      >
+                        {saleSubmitting ? "Đang lưu..." : "Lưu giao dịch bán"}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
+        </Card>
+
+        <Card className="p-4 space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-sm font-medium">Giá vàng Bảo Tín Mạnh Hải</h2>
+              <p className="text-[11px] text-muted-foreground">
+                Nguồn: nhẫn tròn 99,99% (KGB),{" "}
+                <a
+                  href="https://baotinmanhhai.vn"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 text-foreground/80 hover:text-foreground"
+                >
+                  baotinmanhhai.vn
+                </a>
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-md border bg-background p-0.5 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setGoldTimeType("day")}
+                  className={`rounded px-2 py-1 font-medium ${
+                    goldTimeType === "day"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  Theo ngày
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGoldTimeType("month")}
+                  className={`rounded px-2 py-1 font-medium ${
+                    goldTimeType === "month"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  Theo tháng
+                </button>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="text-xs"
+                disabled={goldChartLoading}
+                onClick={() => void loadBtmhChart()}
+              >
+                {goldChartLoading ? "Đang tải..." : "Làm mới"}
+              </Button>
+            </div>
+          </div>
+
+          {goldChartError && (
+            <p className="text-xs text-destructive">{goldChartError}</p>
+          )}
+          {goldChartLoading && goldChartSeries.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Đang tải biểu đồ...</p>
+          ) : goldChartSeries.length > 0 ? (
+            <div className="h-56 w-full min-w-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={goldChartSeries}
+                  margin={{
+                    top: 4,
+                    right: 8,
+                    left: 0,
+                    bottom: goldTimeType === "month" ? 20 : 4,
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis
+                    dataKey="labelShort"
+                    tick={{ fontSize: 9 }}
+                    interval={
+                      goldTimeType === "month"
+                        ? Math.max(0, Math.floor(goldChartSeries.length / 8))
+                        : "preserveStartEnd"
+                    }
+                    angle={goldTimeType === "month" ? -35 : 0}
+                    textAnchor={goldTimeType === "month" ? "end" : "middle"}
+                    height={goldTimeType === "month" ? 52 : 30}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(v) =>
+                      v >= 1e6 ? `${Math.round(v / 1e6)}M` : String(v)
+                    }
+                    width={44}
+                  />
+                  <Tooltip
+                    contentStyle={{ fontSize: 11 }}
+                    formatter={(value, name) => {
+                      const n = Number(value ?? 0);
+                      const label =
+                        name === "rate" || name === "Giá mua vào"
+                          ? "Giá mua vào"
+                          : "Giá bán ra";
+                      return [`${fmt(n)} đ`, label];
+                    }}
+                    labelFormatter={(_, payload) =>
+                      (payload?.[0]?.payload as BtmhGoldChartRow | undefined)
+                        ?.labelFull ?? ""
+                    }
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="rate"
+                    name="Giá mua vào"
+                    stroke="var(--chart-1)"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="sell"
+                    name="Giá bán ra"
+                    stroke="var(--chart-2)"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            !goldChartError && (
+              <p className="text-xs text-muted-foreground">
+                Không có điểm dữ liệu trên biểu đồ.
+              </p>
+            )
+          )}
+
+          {(btmhSpotRate != null || btmhSpotSell != null) && (
+            <div className="flex flex-wrap gap-3 rounded border bg-muted/40 px-2 py-2 text-[11px]">
+              <span>
+                <span className="text-muted-foreground">Mua vào: </span>
+                <span className="font-semibold tabular-nums">
+                  {btmhSpotRate != null ? `${fmt(btmhSpotRate)} đ/chỉ` : "—"}
+                </span>
+              </span>
+              <span>
+                <span className="text-muted-foreground">Bán ra: </span>
+                <span className="font-semibold tabular-nums">
+                  {btmhSpotSell != null ? `${fmt(btmhSpotSell)} đ/chỉ` : "—"}
+                </span>
+              </span>
+              {!btmhSpotRate && firestoreGoldSpot ? (
+                <span className="text-amber-600 dark:text-amber-400">
+                  Đang dùng giá đã lưu: {fmt(firestoreGoldSpot)} đ/chỉ (API lỗi)
+                </span>
+              ) : null}
+            </div>
+          )}
         </Card>
 
         <div className="grid gap-4 md:grid-cols-2">
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm font-medium">Giá vàng & giá trị ước tính</h2>
+              <h2 className="text-sm font-medium">Giá trị danh mục</h2>
               <p className="text-[11px] text-muted-foreground">
-                Bạn có thể nhập thêm số vàng đang giữ; giá sẽ lấy theo giá hiện tại.
+                Chỉ còn nắm = mua + có sẵn − đã bán. Tổng giá trị = chỉ còn nắm × giá. Lãi/lỗ
+                chỉ trên phần mua còn lại (coi các lần bán trừ vào chỉ mua trước).
               </p>
             </div>
             <Dialog>
               <DialogTrigger asChild>
                 <Button size="sm" className="text-xs">
-                  Ghi nhận vàng đang giữ
+                  Ghi nhận vàng có sẵn
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Ghi nhận số vàng đang nắm giữ</DialogTitle>
+                  <DialogTitle>Ghi nhận vàng có sẵn</DialogTitle>
                   <DialogDescription className="text-xs">
-                    Dùng khi bạn đã có sẵn vàng trước khi bắt đầu theo dõi trên ứng dụng.
-                    Giá mua sẽ lấy bằng giá vàng hiện tại.
+                    Cho số vàng bạn đã nắm giữ trước khi theo dõi trên app. Dòng này
+                    cộng vào tổng chỉ và giá trị ước tính cùng vàng đã mua, nhưng{" "}
+                    <span className="font-medium text-foreground">không</span> tính
+                    vào lãi/lỗ. Giá/chỉ tạm lấy theo bảng Bảo Tín Mạnh Hải (hoặc giá
+                    đã lưu nếu API lỗi) chỉ để ước giá trị.
                   </DialogDescription>
                 </DialogHeader>
                 <form
@@ -937,7 +1387,7 @@ export default function SavingsPage() {
                 >
                   <div className="space-y-1">
                     <p className="text-[11px] font-medium text-muted-foreground">
-                      Khối lượng vàng đang giữ (chỉ)
+                      Khối lượng có sẵn (chỉ)
                     </p>
                     <Input
                       className="h-8 text-xs"
@@ -947,34 +1397,19 @@ export default function SavingsPage() {
                       onChange={(e) => setExistingGoldWeight(e.target.value)}
                     />
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-[11px] font-medium text-muted-foreground">
-                      Giá vàng hiện tại (đ/chỉ)
-                    </p>
-                    <div className="flex gap-2">
-                      <CurrencyInput
-                        className="h-8 text-xs flex-1"
-                        placeholder="Ví dụ: 7,500,000"
-                        value={goldMarketPrice}
-                        onChange={setGoldMarketPrice}
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="text-xs shrink-0"
-                        disabled={updatingGoldPrice}
-                        onClick={() => saveGoldMarketPrice(goldMarketPrice)}
-                      >
-                        {updatingGoldPrice ? "Đang cập nhật..." : "Cập nhật"}
-                      </Button>
-                    </div>
-                  </div>
+                  <p className="rounded border bg-muted/50 px-2 py-1.5 text-[11px] text-muted-foreground">
+                    Giá áp dụng:{" "}
+                    <span className="font-semibold text-foreground">
+                      {effectiveSpotRate
+                        ? `${fmt(effectiveSpotRate)} đ/chỉ`
+                        : "chưa có — bấm «Làm mới» biểu đồ giá phía trên"}
+                    </span>
+                  </p>
                   <div className="flex justify-end gap-2 pt-1">
                     <Button
                       type="submit"
                       size="sm"
-                      disabled={addingExistingGold}
+                      disabled={addingExistingGold || !effectiveSpotRate}
                       className="text-xs"
                     >
                       {addingExistingGold ? "Đang lưu..." : "Lưu số vàng"}
@@ -985,140 +1420,228 @@ export default function SavingsPage() {
             </Dialog>
           </div>
 
-          {goldPurchases.length === 0 ? (
+          {goldLedger.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               Chưa có giao dịch vàng nào để tính toán.
             </p>
           ) : (
             (() => {
-              const totalWeight = goldPurchases.reduce(
+              const purchaseRows = goldLedger.filter(
+                (g) => g.entryType === "purchase",
+              );
+              const holdingRows = goldLedger.filter(
+                (g) => g.entryType === "holding",
+              );
+              const saleRows = goldLedger.filter((g) => g.entryType === "sale");
+
+              const weightPurchase = purchaseRows.reduce(
                 (s, g) => s + g.weight,
                 0,
               );
-              const totalCost = goldPurchases.reduce(
+              const weightHolding = holdingRows.reduce(
+                (s, g) => s + g.weight,
+                0,
+              );
+              const weightSold = saleRows.reduce((s, g) => s + g.weight, 0);
+
+              const totalCostPurchase = purchaseRows.reduce(
                 (s, g) => s + g.totalCost,
                 0,
               );
-              const avgPrice =
-                totalWeight > 0 ? Math.round(totalCost / totalWeight) : 0;
-              const market = parseCurrencyInput(goldMarketPrice) || 0;
-              const estValue =
-                totalWeight > 0 && market > 0
-                  ? Math.round(totalWeight * market)
+              const avgPricePurchase =
+                weightPurchase > 0
+                  ? Math.round(totalCostPurchase / weightPurchase)
                   : 0;
-              const diff = estValue - totalCost;
 
-              const historyMax = goldHistory.reduce(
-                (m, p) => Math.max(m, p.totalValue ?? 0),
+              const soldFromPurchase = Math.min(weightSold, weightPurchase);
+              const remainingPurchaseWeight = Math.max(
+                0,
+                weightPurchase - soldFromPurchase,
+              );
+              const soldFromHolding = Math.max(0, weightSold - soldFromPurchase);
+              const remainingHoldingWeight = Math.max(
+                0,
+                weightHolding - soldFromHolding,
+              );
+              const totalWeightNet =
+                remainingPurchaseWeight + remainingHoldingWeight;
+
+              const totalProceedsSales = saleRows.reduce(
+                (s, g) =>
+                  s +
+                  (g.totalProceeds ?? Math.round(g.weight * g.pricePerUnit)),
                 0,
               );
+
+              const costRemainingPurchase =
+                weightPurchase > 0
+                  ? Math.round(
+                      (totalCostPurchase * remainingPurchaseWeight) /
+                        weightPurchase,
+                    )
+                  : 0;
+
+              const spot = effectiveSpotRate ?? 0;
+              const estValue =
+                totalWeightNet > 0 && spot > 0
+                  ? Math.round(totalWeightNet * spot)
+                  : 0;
+              const estValuePurchaseOnly =
+                remainingPurchaseWeight > 0 && spot > 0
+                  ? Math.round(remainingPurchaseWeight * spot)
+                  : 0;
+              const diffPnl = estValuePurchaseOnly - costRemainingPurchase;
 
               return (
                 <div className="space-y-3 text-xs">
                   <div className="space-y-1.5 rounded border bg-muted/40 px-2 py-1.5">
-                    <div className="flex justify-between gap-4">
-                      <span className="text-[11px] text-muted-foreground">
-                        Tổng khối lượng:{" "}
-                        <span className="font-semibold text-foreground">
-                          {totalWeight.toFixed(2)} chỉ
+                    <div className="flex flex-col gap-1">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-[11px] text-muted-foreground">
+                          Đang nắm:{" "}
+                          <span className="font-semibold text-foreground">
+                            {totalWeightNet.toFixed(2)} chỉ
+                          </span>
                         </span>
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        Giá vốn TB:{" "}
-                        <span className="font-semibold text-foreground">
-                          {fmt(avgPrice)} đ/chỉ
+                        <span className="text-[11px] text-muted-foreground">
+                          Giá vốn TB (đã mua):{" "}
+                          <span className="font-semibold text-foreground">
+                            {weightPurchase > 0
+                              ? `${fmt(avgPricePurchase)} đ/chỉ`
+                              : "—"}
+                          </span>
                         </span>
-                      </span>
+                      </div>
+                      {(weightPurchase > 0 ||
+                        weightHolding > 0 ||
+                        weightSold > 0) && (
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          {weightPurchase > 0 ? (
+                            <>
+                              <span className="font-medium text-foreground">
+                                Đã mua: {weightPurchase.toFixed(2)} chỉ
+                              </span>
+                              {remainingPurchaseWeight < weightPurchase ? (
+                                <>
+                                  {" → còn "}
+                                  <span className="font-medium text-foreground">
+                                    {remainingPurchaseWeight.toFixed(2)} chỉ
+                                  </span>
+                                </>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="font-medium text-foreground">
+                              Chưa có giao dịch mua
+                            </span>
+                          )}
+                          {weightHolding > 0 ? (
+                            <>
+                              {" · "}
+                              <span className="font-medium text-foreground">
+                                Có sẵn: {weightHolding.toFixed(2)} chỉ
+                              </span>
+                              {remainingHoldingWeight < weightHolding ? (
+                                <>
+                                  {" → còn "}
+                                  <span className="font-medium text-foreground">
+                                    {remainingHoldingWeight.toFixed(2)} chỉ
+                                  </span>
+                                </>
+                              ) : null}
+                              {" — không lãi/lỗ"}
+                            </>
+                          ) : null}
+                          {weightSold > 0 ? (
+                            <>
+                              {" · "}
+                              <span className="font-medium text-foreground">
+                                Đã bán: {weightSold.toFixed(2)} chỉ
+                              </span>
+                              {" · Thu: "}
+                              <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                {fmt(totalProceedsSales)} đ
+                              </span>
+                            </>
+                          ) : null}
+                        </p>
+                      )}
                     </div>
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-1 rounded border bg-muted/40 px-2 py-1.5">
                     <p className="text-[11px] font-medium text-muted-foreground">
-                      Giá vàng hiện tại (đ/chỉ)
+                      Giá tham chiếu (mua vào, đ/chỉ)
                     </p>
-                    <div className="flex gap-2">
-                      <CurrencyInput
-                        className="h-8 text-xs flex-1"
-                        placeholder="Ví dụ: 7,500,000"
-                        value={goldMarketPrice}
-                        onChange={setGoldMarketPrice}
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="text-xs shrink-0"
-                        disabled={updatingGoldPrice}
-                        onClick={() => saveGoldMarketPrice(goldMarketPrice)}
-                      >
-                        {updatingGoldPrice ? "Đang cập nhật..." : "Cập nhật"}
-                      </Button>
-                    </div>
+                    <p className="text-sm font-semibold tabular-nums">
+                      {spot > 0 ? `${fmt(spot)} đ/chỉ` : "—"}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Lãi/lỗ tạm chỉ trên chỉ mua còn lại và phần giá vốn tương ứng (bán
+                      được coi trừ vào chỉ mua trước).
+                    </p>
                   </div>
 
-                  {market > 0 && totalWeight > 0 && (
+                  {totalWeightNet > 0 && (
                     <div className="space-y-1 rounded border bg-muted/40 px-2 py-1.5">
                       <p className="text-[11px] text-muted-foreground">
-                        Giá trị ước tính theo giá hiện tại:
+                        Giá trị ước tính (chỉ đang nắm × giá mua vào):
                       </p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {fmt(estValue)} đ
+                      <p className="text-sm font-semibold text-foreground tabular-nums">
+                        {spot > 0 ? `${fmt(estValue)} đ` : "—"}
                       </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Lãi/lỗ tạm tính:{" "}
-                        <span
-                          className={`font-semibold ${
-                            diff >= 0 ? "text-green-600" : "text-red-500"
-                          }`}
-                        >
-                          {diff >= 0 ? "+" : ""}
-                          {fmt(diff)} đ
-                        </span>
-                      </p>
+                      {spot <= 0 && (
+                        <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                          Chưa tải được giá tham chiếu. Bấm «Làm mới» ở biểu đồ Bảo Tín
+                          Mạnh Hải phía trên (hoặc đợi vài giây).
+                        </p>
+                      )}
+                      {remainingPurchaseWeight > 0 ? (
+                        spot > 0 ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            Lãi/lỗ tạm (phần mua còn nắm):{" "}
+                            <span
+                              className={`font-semibold ${
+                                diffPnl >= 0 ? "text-green-600" : "text-red-500"
+                              }`}
+                            >
+                              {diffPnl >= 0 ? "+" : ""}
+                              {fmt(diffPnl)} đ
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {" "}
+                              (giá vốn còn lại ~{fmt(costRemainingPurchase)} đ)
+                            </span>
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground">
+                            <span className="font-medium text-foreground">
+                              Lãi/lỗ tạm:
+                            </span>{" "}
+                            cần giá mua vào — giá vốn còn lại ~{" "}
+                            <span className="font-medium text-foreground tabular-nums">
+                              {fmt(costRemainingPurchase)} đ
+                            </span>
+                            .
+                          </p>
+                        )
+                      ) : weightPurchase > 0 ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          Đã bán hết phần mua ghi nhận — không còn lãi/lỗ tạm trên giá
+                          vốn mua (còn lại chỉ vàng có sẵn nếu có).
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground">
+                          Chưa có giao dịch mua — không có lãi/lỗ tạm trên giá vốn.
+                        </p>
+                      )}
                     </div>
                   )}
 
-                  {goldHistory.length > 1 && historyMax > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-[11px] font-medium text-muted-foreground">
-                        Biến động tổng giá trị vàng
-                      </p>
-                      <div className="relative h-24 rounded border bg-muted/30 px-2 py-2">
-                        <div className="flex items-end h-full gap-0.5">
-                          {goldHistory.map((p, idx) => {
-                            const h = Math.max(
-                              4,
-                              (p.totalValue / historyMax) * 70,
-                            );
-                            return (
-                              <div
-                                key={p.id || idx}
-                                className="flex-1 bg-amber-400/70 dark:bg-amber-500/80 rounded-t"
-                                style={{ height: `${h}%` }}
-                                title={`${p.createdAt.slice(0, 10)}: ${fmt(
-                                  p.totalValue,
-                                )} đ`}
-                              />
-                            );
-                          })}
-                        </div>
-                        <div className="mt-1 flex justify-between text-[9px] text-muted-foreground">
-                          <span>
-                            {goldHistory[0]?.createdAt
-                              ? goldHistory[0].createdAt.slice(5, 10)
-                              : ""}
-                          </span>
-                          <span>
-                            {goldHistory[goldHistory.length - 1]?.createdAt
-                              ? goldHistory[goldHistory.length - 1].createdAt.slice(
-                                  5,
-                                  10,
-                                )
-                              : ""}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                  {totalWeightNet <= 0 && goldLedger.length > 0 && (
+                    <p className="rounded border bg-muted/30 px-2 py-1.5 text-[11px] text-muted-foreground">
+                      Không còn chỉ đang nắm (đã bán hết hoặc chỉ có giao dịch bán).
+                    </p>
                   )}
                 </div>
               );
@@ -1127,38 +1650,173 @@ export default function SavingsPage() {
         </Card>
 
         <Card className="p-4 space-y-3">
-          <h2 className="text-sm font-medium">Lịch sử mua vàng</h2>
+          <h2 className="text-sm font-medium">Lịch sử vàng</h2>
           {goldLoading ? (
             <p className="text-xs text-muted-foreground">Đang tải...</p>
-          ) : goldPurchases.length === 0 ? (
+          ) : goldLedger.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               Chưa có giao dịch vàng nào.
             </p>
           ) : (
-            <div className="space-y-2 max-h-80 overflow-auto text-xs">
-              {goldPurchases.map((g) => (
+            <div className="space-y-2 max-h-96 overflow-auto text-xs">
+              {goldLedger.map((g) => (
                 <div
                   key={g.id}
-                  className="flex items-center justify-between gap-3 border-b last:border-0 py-1.5"
+                  className="flex items-center justify-between gap-2 border-b py-1.5 last:border-0"
                 >
-                  <div className="flex flex-col">
-                    <span className="font-medium">
+                  <div className="min-w-0 flex flex-col">
+                    <span className="font-medium inline-flex items-center gap-1.5 flex-wrap">
                       {g.date || "Không rõ ngày"}
+                      {g.entryType === "holding" ? (
+                        <span className="rounded border border-dashed px-1.5 py-0 text-[10px] font-normal text-muted-foreground">
+                          Có sẵn
+                        </span>
+                      ) : null}
+                      {g.entryType === "sale" ? (
+                        <span className="rounded border border-dashed px-1.5 py-0 text-[10px] font-normal text-muted-foreground">
+                          Bán
+                        </span>
+                      ) : null}
                     </span>
                     <span className="text-[11px] text-muted-foreground">
-                      {g.weight.toFixed(2)} chỉ × {fmt(g.pricePerUnit)} đ/chỉ
-                      {g.note ? ` • ${g.note}` : ""}
+                      {g.entryType === "sale" ? (
+                        <>
+                          Bán {g.weight.toFixed(2)} chỉ × {fmt(g.pricePerUnit)}{" "}
+                          đ/chỉ
+                        </>
+                      ) : (
+                        <>
+                          {g.weight.toFixed(2)} chỉ × {fmt(g.pricePerUnit)} đ/chỉ
+                        </>
+                      )}
+                      {g.note && g.entryType === "purchase"
+                        ? ` • ${g.note}`
+                        : ""}
+                      {g.note && g.entryType === "sale" ? ` • ${g.note}` : ""}
                     </span>
                   </div>
-                  <span className="text-xs font-semibold text-amber-500 whitespace-nowrap">
-                    {fmt(g.totalCost)} đ
-                  </span>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <span
+                      className={`text-xs font-semibold whitespace-nowrap ${
+                        g.entryType === "sale"
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-amber-500"
+                      }`}
+                    >
+                      {g.entryType === "sale" ? "+" : ""}
+                      {fmt(entryMoneyLabel(g))} đ
+                    </span>
+                    <button
+                      type="button"
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      title="Sửa"
+                      onClick={() => openEditPurchase(g)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      title="Xóa"
+                      onClick={() => void handleDeletePurchase(g)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </Card>
       </div>
+
+      <Dialog
+        open={editPurchaseOpen}
+        onOpenChange={(o) => {
+          setEditPurchaseOpen(o);
+          if (!o) setEditPurchase(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editPurchase?.entryType === "sale"
+                ? "Sửa giao dịch bán"
+                : "Sửa giao dịch vàng"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {editPurchase?.entryType === "sale"
+                ? "Cập nhật ngày, chỉ bán và giá bán/chỉ."
+                : "Cập nhật ngày, khối lượng và giá ghi nhận."}
+              {editPurchase?.entryType === "holding"
+                ? " Dòng «có sẵn» không đưa vào lãi/lỗ."
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {editPurchase && (
+            <form onSubmit={handleUpdatePurchase} className="space-y-3 mt-2">
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  {editPurchase.entryType === "sale" ? "Ngày bán" : "Ngày"}
+                </p>
+                <Input
+                  type="date"
+                  className="h-8 text-xs"
+                  value={editGoldDate}
+                  onChange={(e) => setEditGoldDate(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1 space-y-1">
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    {editPurchase.entryType === "sale"
+                      ? "Chỉ bán"
+                      : "Khối lượng (chỉ)"}
+                  </p>
+                  <Input
+                    className="h-8 text-xs"
+                    inputMode="decimal"
+                    value={editGoldWeight}
+                    onChange={(e) => setEditGoldWeight(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    {editPurchase.entryType === "sale"
+                      ? "Giá bán/chỉ (đ)"
+                      : "Giá/chỉ (đ)"}
+                  </p>
+                  <CurrencyInput
+                    className="h-8 text-xs"
+                    value={editGoldPricePerUnit}
+                    onChange={setEditGoldPricePerUnit}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  Ghi chú
+                </p>
+                <Input
+                  className="h-8 text-xs"
+                  value={editGoldNote}
+                  onChange={(e) => setEditGoldNote(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={purchaseSaving}
+                  className="text-xs"
+                >
+                  {purchaseSaving ? "Đang lưu..." : "Lưu thay đổi"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
       </div>
       )}
     </div>
