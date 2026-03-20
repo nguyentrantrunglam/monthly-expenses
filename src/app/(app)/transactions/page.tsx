@@ -383,17 +383,54 @@ export default function TransactionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, selectedSessionMonth, cycleDay]);
 
+  const personalIncomeSession = useMemo(() => {
+    if (!selectedSessionMonth) return 0;
+    const { startStr, endStr } = sessionRange(selectedSessionMonth);
+    return transactions
+      .filter(
+        (t) =>
+          t.type === "income" &&
+          t.date >= startStr &&
+          t.date <= endStr &&
+          t.spendingType === "personal"
+      )
+      .reduce((s, t) => s + t.amount, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, selectedSessionMonth, cycleDay]);
+
+  const sharedIncomeSession = useMemo(() => {
+    if (!selectedSessionMonth) return 0;
+    const { startStr, endStr } = sessionRange(selectedSessionMonth);
+    return transactions
+      .filter(
+        (t) =>
+          t.type === "income" &&
+          t.date >= startStr &&
+          t.date <= endStr &&
+          t.spendingType === "shared_pool"
+      )
+      .reduce((s, t) => s + t.amount, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, selectedSessionMonth, cycleDay]);
+
+  const personalBudgetTotal =
+    myBudget != null ? myBudget + personalIncomeSession : null;
   const personalRemaining =
-    myBudget != null ? myBudget - personalSpending : null;
-  const personalPct =
-    myBudget && myBudget > 0
-      ? Math.round((personalSpending / myBudget) * 100)
-      : 0;
+    personalBudgetTotal != null
+      ? personalBudgetTotal - personalSpending
+      : null;
+  const sharedBudgetTotal =
+    sharedPool != null ? sharedPool + sharedIncomeSession : null;
   const sharedRemaining =
-    sharedPool != null ? sharedPool - sharedSpending : null;
+    sharedBudgetTotal != null ? sharedBudgetTotal - sharedSpending : null;
+
+  const personalPct =
+    personalBudgetTotal != null && personalBudgetTotal > 0
+      ? Math.round((personalSpending / personalBudgetTotal) * 100)
+      : 0;
   const sharedPct =
-    sharedPool && sharedPool > 0
-      ? Math.round((sharedSpending / sharedPool) * 100)
+    sharedBudgetTotal != null && sharedBudgetTotal > 0
+      ? Math.round((sharedSpending / sharedBudgetTotal) * 100)
       : 0;
 
   const nameSuggestions = useMemo(() => {
@@ -620,7 +657,8 @@ export default function TransactionsPage() {
       {activeBudget && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Personal budget */}
-          {myBudget != null && myBudget > 0 && (
+          {myBudget != null &&
+            (myBudget > 0 || personalIncomeSession > 0) && (
             <Card className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
@@ -634,23 +672,36 @@ export default function TransactionsPage() {
                   )}
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-3 mb-2.5">
-                <div className="text-center">
-                  <p className="text-[10px] text-blue-500 mb-0.5">Được chia</p>
-                  <p className="text-sm font-bold text-blue-600 dark:text-blue-400 tabular-nums">
-                    {fmt(myBudget)} đ
-                  </p>
+              <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-3 sm:gap-3">
+                <div className="min-w-0 space-y-3 text-center sm:text-left">
+                  <div>
+                    <p className="text-[10px] text-blue-500 mb-0.5">Được chia</p>
+                    <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 tabular-nums whitespace-nowrap">
+                      {fmt(myBudget)} đ
+                    </p>
+                    <p className="text-[9px] text-muted-foreground mt-0.5 hidden sm:block">
+                      trong session
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-green-600 dark:text-green-500 mb-0.5">
+                      Thu nhập
+                    </p>
+                    <p className="text-sm font-semibold text-green-600 dark:text-green-400 tabular-nums whitespace-nowrap">
+                      +{fmt(personalIncomeSession)} đ
+                    </p>
+                  </div>
                 </div>
-                <div className="text-center">
+                <div className="min-w-0 text-center">
                   <p className="text-[10px] text-red-500 mb-0.5">Đã chi</p>
-                  <p className="text-sm font-bold text-red-500 tabular-nums">
+                  <p className="text-sm font-semibold text-red-500 tabular-nums whitespace-nowrap">
                     {fmt(personalSpending)} đ
                   </p>
                 </div>
-                <div className="text-center">
+                <div className="min-w-0 text-center">
                   <p className="text-[10px] text-muted-foreground mb-0.5">Còn lại</p>
                   <p
-                    className={`text-sm font-bold tabular-nums ${
+                    className={`text-sm font-semibold tabular-nums whitespace-nowrap ${
                       personalRemaining != null && personalRemaining >= 0
                         ? "text-green-600 dark:text-green-400"
                         : "text-orange-600 dark:text-orange-400"
@@ -660,26 +711,29 @@ export default function TransactionsPage() {
                   </p>
                 </div>
               </div>
-              <div className="h-2 rounded-full bg-muted overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    personalPct > 90
-                      ? "bg-red-500"
-                      : personalPct > 70
-                        ? "bg-amber-500"
-                        : "bg-blue-500"
-                  }`}
-                  style={{ width: `${Math.min(100, personalPct)}%` }}
-                />
+              <div className="mt-3 pt-3 border-t border-border/60">
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      personalPct > 90
+                        ? "bg-red-500"
+                        : personalPct > 70
+                          ? "bg-amber-500"
+                          : "bg-blue-500"
+                    }`}
+                    style={{ width: `${Math.min(100, personalPct)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground text-right mt-1 tabular-nums">
+                  {personalPct}% đã chi (trên được chia + thu)
+                </p>
               </div>
-              <p className="text-[10px] text-muted-foreground text-right mt-1">
-                {personalPct}%
-              </p>
             </Card>
           )}
 
           {/* Shared pool budget */}
-          {sharedPool != null && sharedPool > 0 && (
+          {sharedPool != null &&
+            (sharedPool > 0 || sharedIncomeSession > 0) && (
             <Card className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
@@ -693,23 +747,38 @@ export default function TransactionsPage() {
                   )}
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-3 mb-2.5">
-                <div className="text-center">
-                  <p className="text-[10px] text-teal-500 mb-0.5">Được chia</p>
-                  <p className="text-sm font-bold text-teal-600 dark:text-teal-400 tabular-nums">
-                    {fmt(sharedPool)} đ
-                  </p>
+              <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-3 sm:gap-3">
+                <div className="min-w-0 space-y-3 text-center sm:text-left">
+                  <div>
+                    <p className="text-[10px] text-teal-600 dark:text-teal-500 mb-0.5">
+                      Được chia
+                    </p>
+                    <p className="text-sm font-semibold text-teal-600 dark:text-teal-400 tabular-nums whitespace-nowrap">
+                      {fmt(sharedPool)} đ
+                    </p>
+                    <p className="text-[9px] text-muted-foreground mt-0.5 hidden sm:block">
+                      trong session
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-green-600 dark:text-green-500 mb-0.5">
+                      Thu nhập
+                    </p>
+                    <p className="text-sm font-semibold text-green-600 dark:text-green-400 tabular-nums whitespace-nowrap">
+                      +{fmt(sharedIncomeSession)} đ
+                    </p>
+                  </div>
                 </div>
-                <div className="text-center">
+                <div className="min-w-0 text-center">
                   <p className="text-[10px] text-red-500 mb-0.5">Đã chi</p>
-                  <p className="text-sm font-bold text-red-500 tabular-nums">
+                  <p className="text-sm font-semibold text-red-500 tabular-nums whitespace-nowrap">
                     {fmt(sharedSpending)} đ
                   </p>
                 </div>
-                <div className="text-center">
+                <div className="min-w-0 text-center">
                   <p className="text-[10px] text-muted-foreground mb-0.5">Còn lại</p>
                   <p
-                    className={`text-sm font-bold tabular-nums ${
+                    className={`text-sm font-semibold tabular-nums whitespace-nowrap ${
                       sharedRemaining != null && sharedRemaining >= 0
                         ? "text-green-600 dark:text-green-400"
                         : "text-orange-600 dark:text-orange-400"
@@ -719,21 +788,23 @@ export default function TransactionsPage() {
                   </p>
                 </div>
               </div>
-              <div className="h-2 rounded-full bg-muted overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    sharedPct > 90
-                      ? "bg-red-500"
-                      : sharedPct > 70
-                        ? "bg-amber-500"
-                        : "bg-teal-500"
-                  }`}
-                  style={{ width: `${Math.min(100, sharedPct)}%` }}
-                />
+              <div className="mt-3 pt-3 border-t border-border/60">
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      sharedPct > 90
+                        ? "bg-red-500"
+                        : sharedPct > 70
+                          ? "bg-amber-500"
+                          : "bg-teal-500"
+                    }`}
+                    style={{ width: `${Math.min(100, sharedPct)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground text-right mt-1 tabular-nums">
+                  {sharedPct}% đã chi (trên được chia + thu)
+                </p>
               </div>
-              <p className="text-[10px] text-muted-foreground text-right mt-1">
-                {sharedPct}%
-              </p>
             </Card>
           )}
         </div>
