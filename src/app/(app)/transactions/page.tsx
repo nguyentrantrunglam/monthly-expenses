@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { differenceInDays, endOfDay, startOfDay } from "date-fns";
 import {
   collection,
@@ -31,18 +31,10 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import {
   Dialog,
   DialogContent,
@@ -50,7 +42,18 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Receipt, Plus, Pencil, Trash2, X, Check, Wallet, Scale, Mic } from "lucide-react";
+import {
+  Receipt,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Check,
+  Wallet,
+  Scale,
+  Mic,
+  Loader2,
+} from "lucide-react";
 import { VoiceExpenseInput } from "@/components/VoiceExpenseInput";
 import {
   Tooltip,
@@ -174,7 +177,7 @@ export default function TransactionsPage() {
   const [filterCategory, setFilterCategory] = useState("");
   const [scopeView, setScopeView] = useState<
     "all" | "personal_mine" | "shared_pool"
-  >("all");
+  >("personal_mine");
   const { transactions, loading, addTransaction, updateTransaction, deleteTransaction } =
     useTransactions({
       category: filterCategory || undefined,
@@ -320,6 +323,7 @@ export default function TransactionsPage() {
     const endDate = endOfDay(new Date(endStr + "T12:00:00"));
     const today = startOfDay(new Date());
     return Math.max(0, differenceInDays(endDate, today) + 1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- sessionRange phụ thuộc cycleDay
   }, [budgetFromSession, cycleDay]);
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -1047,9 +1051,8 @@ export default function TransactionsPage() {
         </Card>
       ) : (
         <TransactionsTable
+          key={`tx-${selectedSessionMonth ?? "all"}-${scopeView}-${filterCategory || "allcat"}`}
           transactions={visibleTransactions}
-          totalExpense={totalExpense}
-          totalIncome={totalIncome}
           user={user}
           family={family}
           editingId={editingId}
@@ -1076,12 +1079,13 @@ export default function TransactionsPage() {
   );
 }
 
-const TX_PAGE_SIZE = 10;
+/** Số dòng hiển thị ban đầu; cuộn xuống sẽ tải thêm từng đợt. */
+const TX_INITIAL_VISIBLE = 10;
+const TX_LOAD_MORE = 10;
+const TX_LOAD_MORE_DELAY_MS = 280;
 
 function TransactionsTable({
   transactions,
-  totalExpense,
-  totalIncome,
   user,
   family,
   editingId,
@@ -1104,8 +1108,6 @@ function TransactionsTable({
   deleteTransaction,
 }: {
   transactions: Transaction[];
-  totalExpense: number;
-  totalIncome: number;
   user: import("@/lib/stores/authStore").AuthUser | null;
   family: import("@/hooks/useFamily").Family | null;
   editingId: string | null;
@@ -1127,12 +1129,50 @@ function TransactionsTable({
   startEdit: (tx: Transaction) => void;
   deleteTransaction: (id: string) => Promise<void>;
 }) {
-  const [page, setPage] = useState(1);
-  const pageCount = Math.max(1, Math.ceil(transactions.length / TX_PAGE_SIZE));
-  const paged = transactions.slice(
-    (page - 1) * TX_PAGE_SIZE,
-    page * TX_PAGE_SIZE
+  const [visibleCount, setVisibleCount] = useState(TX_INITIAL_VISIBLE);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const loadMoreInFlightRef = useRef(false);
+  const loadMoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const shown = useMemo(
+    () => transactions.slice(0, visibleCount),
+    [transactions, visibleCount]
   );
+  const hasMore = visibleCount < transactions.length;
+
+  useEffect(() => {
+    const node = loadMoreSentinelRef.current;
+    if (!node || !hasMore) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const hit = entries.some((e) => e.isIntersecting);
+        if (!hit || loadMoreInFlightRef.current) return;
+        loadMoreInFlightRef.current = true;
+        setLoadingMore(true);
+        if (loadMoreTimeoutRef.current) clearTimeout(loadMoreTimeoutRef.current);
+        loadMoreTimeoutRef.current = setTimeout(() => {
+          loadMoreTimeoutRef.current = null;
+          setVisibleCount((c) =>
+            Math.min(c + TX_LOAD_MORE, transactions.length)
+          );
+          loadMoreInFlightRef.current = false;
+          setLoadingMore(false);
+        }, TX_LOAD_MORE_DELAY_MS);
+      },
+      { root: null, rootMargin: "240px", threshold: 0 }
+    );
+    obs.observe(node);
+    return () => {
+      obs.disconnect();
+      if (loadMoreTimeoutRef.current) {
+        clearTimeout(loadMoreTimeoutRef.current);
+        loadMoreTimeoutRef.current = null;
+      }
+      loadMoreInFlightRef.current = false;
+      setLoadingMore(false);
+    };
+  }, [hasMore, transactions.length, visibleCount]);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -1150,7 +1190,7 @@ function TransactionsTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {paged.map((tx) =>
+          {shown.map((tx) =>
             editingId === tx.id ? (
               <TableRow key={tx.id} className="bg-muted/20">
                 <TableCell className="p-1 align-top">
@@ -1357,58 +1397,45 @@ function TransactionsTable({
               </TableRow>
             )
           )}
+          {hasMore ? (
+            <TableRow className="border-0 hover:bg-transparent">
+              <TableCell colSpan={7} className="h-px p-0">
+                <div
+                  ref={loadMoreSentinelRef}
+                  className="flex min-h-10 items-center justify-center gap-2 py-2"
+                  aria-busy={loadingMore}
+                  aria-label={
+                    loadingMore ? "Đang tải thêm giao dịch" : "Tải thêm khi cuộn tới"
+                  }
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader2
+                        className="h-4 w-4 shrink-0 animate-spin text-muted-foreground"
+                        aria-hidden
+                      />
+                      <span className="text-[11px] text-muted-foreground">
+                        Đang tải thêm…
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+              </TableCell>
+            </TableRow>
+          ) : null}
         </TableBody>
-        <TableFooter>
-          <TableRow>
-            <TableCell colSpan={5} className="text-right text-xs text-muted-foreground">
-              Tổng thu (
-              {transactions.filter((t) => t.type === "income").length} giao dịch)
-            </TableCell>
-            <TableCell className="text-right tabular-nums text-xs text-green-600 dark:text-green-400">
-              +{fmt(totalIncome)} đ
-            </TableCell>
-            <TableCell />
-          </TableRow>
-          <TableRow>
-            <TableCell colSpan={5} className="text-right text-xs text-muted-foreground">
-              Tổng chi (
-              {transactions.filter((t) => t.type === "expense").length} giao dịch)
-            </TableCell>
-            <TableCell className="text-right tabular-nums text-xs text-red-500">
-              -{fmt(totalExpense)} đ
-            </TableCell>
-            <TableCell />
-          </TableRow>
-        </TableFooter>
       </Table>
 
-      {pageCount > 1 && (
-        <div className="flex items-center justify-between border-t px-4 py-3">
-          <p className="text-xs text-muted-foreground">
-            Trang {page}/{pageCount}
-          </p>
-          <Pagination className="mx-0 w-auto">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  text="Trước"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  aria-disabled={page <= 1}
-                  className={page <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-              <PaginationItem>
-                <PaginationNext
-                  text="Sau"
-                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                  aria-disabled={page >= pageCount}
-                  className={page >= pageCount ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+      {transactions.length > 0 ? (
+        <div className="border-t px-4 py-2 text-center text-[11px] text-muted-foreground">
+          Đang hiển thị {shown.length}/{transactions.length} giao dịch
+          {loadingMore
+            ? " · đang tải thêm…"
+            : hasMore
+              ? " · cuộn xuống để tải thêm"
+              : ""}
         </div>
-      )}
+      ) : null}
       </Card>
     </TooltipProvider>
   );
