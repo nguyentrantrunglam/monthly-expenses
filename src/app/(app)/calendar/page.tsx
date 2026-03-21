@@ -24,6 +24,7 @@ import {
   useCalendarEvents,
   useConnectGoogleCalendar,
   useCreateCalendarEvent,
+  useUpdateCalendarEvent,
   type CalendarEvent,
 } from "@/hooks/useGoogleCalendar";
 import { Card } from "@/components/ui/card";
@@ -141,6 +142,59 @@ function combineLocalDateTimeToIso(dateYmd: string, timeHm: string): string {
   return new Date(y, mo - 1, d, h, mi, 0, 0).toISOString();
 }
 
+/** Đổ dữ liệu sự kiện Google vào form (ngày kết thúc cả ngày = inclusive cho UI). */
+function calendarEventToFormFields(ev: CalendarEvent): {
+  summary: string;
+  desc: string;
+  start: string;
+  end: string;
+  startTime: string;
+  endTime: string;
+  allDay: boolean;
+  location: string;
+  colorId: string;
+} | null {
+  const startRaw = ev.start?.dateTime ?? ev.start?.date;
+  if (!startRaw) return null;
+  const endRaw = ev.end?.dateTime ?? ev.end?.date;
+  const allDay = !!ev.start?.date && !ev.start?.dateTime;
+
+  if (allDay) {
+    const startDate = startRaw.slice(0, 10);
+    let endInc = "";
+    if (endRaw) {
+      const ex = parseISO(endRaw.slice(0, 10));
+      const last = addDays(ex, -1);
+      const endStr = format(last, "yyyy-MM-dd");
+      endInc = endStr === startDate ? "" : endStr;
+    }
+    return {
+      summary: ev.summary ?? "",
+      desc: ev.description ?? "",
+      start: startDate,
+      end: endInc,
+      startTime: "09:00",
+      endTime: "10:00",
+      allDay: true,
+      location: ev.location ?? "",
+      colorId: ev.colorId ?? "",
+    };
+  }
+  const s = parseISO(startRaw);
+  const e = endRaw ? parseISO(endRaw) : null;
+  return {
+    summary: ev.summary ?? "",
+    desc: ev.description ?? "",
+    start: format(s, "yyyy-MM-dd"),
+    end: e ? format(e, "yyyy-MM-dd") : "",
+    startTime: format(s, "HH:mm"),
+    endTime: e ? format(e, "HH:mm") : "10:00",
+    allDay: false,
+    location: ev.location ?? "",
+    colorId: ev.colorId ?? "",
+  };
+}
+
 function formatEventWhen(ev: CalendarEvent): string {
   const startRaw = ev.start?.dateTime ?? ev.start?.date;
   if (!startRaw) return "—";
@@ -177,9 +231,11 @@ export default function CalendarPage() {
   const { data: status, isLoading: statusLoading, refetch: refetchStatus } = useCalendarStatus();
   const { connect, loading: connecting } = useConnectGoogleCalendar();
   const createEvent = useCreateCalendarEvent();
+  const updateEvent = useUpdateCalendarEvent();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [selectedDateForCreate, setSelectedDateForCreate] = useState<string | null>(null);
   const [newSummary, setNewSummary] = useState("");
   const [newDesc, setNewDesc] = useState("");
@@ -242,19 +298,52 @@ export default function CalendarPage() {
   }, [currentDate]);
 
   const handleOpenCreate = (dateStr?: string) => {
+    setEditingEvent(null);
+    setNewSummary("");
+    setNewDesc("");
+    setNewLocation("");
+    setNewColorId("");
+    setNewAllDay(true);
+    setNewStartTime("09:00");
+    setNewEndTime("10:00");
     if (dateStr) {
       setSelectedDateForCreate(dateStr);
       setNewStart(dateStr);
+      setNewEnd("");
     } else {
       setSelectedDateForCreate(null);
       setNewStart("");
+      setNewEnd("");
     }
+    setCreateOpen(true);
+  };
+
+  const openEditEvent = (ev: CalendarEvent) => {
+    if (ev.isHoliday) {
+      setDetailEvent(ev);
+      return;
+    }
+    if (!ev.id) return;
+    const f = calendarEventToFormFields(ev);
+    if (!f) return;
+    setEditingEvent(ev);
+    setSelectedDateForCreate(null);
+    setNewSummary(f.summary);
+    setNewDesc(f.desc);
+    setNewStart(f.start);
+    setNewEnd(f.end);
+    setNewStartTime(f.startTime);
+    setNewEndTime(f.endTime);
+    setNewAllDay(f.allDay);
+    setNewLocation(f.location);
+    setNewColorId(f.colorId);
     setCreateOpen(true);
   };
 
   const handleCloseCreate = (open: boolean) => {
     setCreateOpen(open);
     if (!open) {
+      setEditingEvent(null);
       setSelectedDateForCreate(null);
       setNewSummary("");
       setNewDesc("");
@@ -268,28 +357,38 @@ export default function CalendarPage() {
     }
   };
 
-  const handleCreateEvent = async (e: React.FormEvent) => {
+  const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSummary.trim() || !newStart) return;
+    const startPayload = newAllDay
+      ? newStart.slice(0, 10)
+      : combineLocalDateTimeToIso(newStart, newStartTime);
+    const endPayload = newAllDay
+      ? newEnd
+        ? newEnd.slice(0, 10)
+        : undefined
+      : newEnd
+        ? combineLocalDateTimeToIso(newEnd, newEndTime)
+        : undefined;
+    const payload = {
+      summary: newSummary.trim(),
+      description: editingEvent
+        ? newDesc.trim()
+        : newDesc.trim() || undefined,
+      start: startPayload,
+      end: endPayload,
+      location: newLocation.trim() || undefined,
+      colorId: newColorId || undefined,
+    };
     try {
-      const startPayload = newAllDay
-        ? newStart.slice(0, 10)
-        : combineLocalDateTimeToIso(newStart, newStartTime);
-      const endPayload = newAllDay
-        ? newEnd
-          ? newEnd.slice(0, 10)
-          : undefined
-        : newEnd
-          ? combineLocalDateTimeToIso(newEnd, newEndTime)
-          : undefined;
-      await createEvent.mutateAsync({
-        summary: newSummary.trim(),
-        description: newDesc.trim() || undefined,
-        start: startPayload,
-        end: endPayload,
-        location: newLocation.trim() || undefined,
-        colorId: newColorId || undefined,
-      });
+      if (editingEvent?.id) {
+        await updateEvent.mutateAsync({
+          eventId: editingEvent.id,
+          ...payload,
+        });
+      } else {
+        await createEvent.mutateAsync(payload);
+      }
       handleCloseCreate(false);
     } catch (err) {
       console.error(err);
@@ -427,17 +526,21 @@ export default function CalendarPage() {
             <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>
-                  {selectedDateForCreate
-                    ? `Thêm sự kiện - ${format(parseISO(selectedDateForCreate), "dd/MM/yyyy", { locale: vi })}`
-                    : "Tạo sự kiện mới"}
+                  {editingEvent
+                    ? "Sửa sự kiện"
+                    : selectedDateForCreate
+                      ? `Thêm sự kiện - ${format(parseISO(selectedDateForCreate), "dd/MM/yyyy", { locale: vi })}`
+                      : "Tạo sự kiện mới"}
                 </DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleCreateEvent} className="space-y-4 mt-4">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Mọi thành viên (kể cả bạn) sẽ nhận{" "}
-                  <span className="font-medium text-foreground">lời mời qua email</span>{" "}
-                  đăng nhập từ Google Calendar.
-                </p>
+              <form onSubmit={handleSaveEvent} className="space-y-4 mt-4">
+                {!editingEvent ? (
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Mọi thành viên (kể cả bạn) sẽ nhận{" "}
+                    <span className="font-medium text-foreground">lời mời qua email</span>{" "}
+                    đăng nhập từ Google Calendar.
+                  </p>
+                ) : null}
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-medium text-muted-foreground">
                     Tiêu đề
@@ -562,14 +665,38 @@ export default function CalendarPage() {
                     ))}
                   </div>
                 </div>
-                <Button
-                  type="submit"
-                  disabled={
-                    createEvent.isPending || !newSummary.trim() || !newStart
-                  }
-                >
-                  {createEvent.isPending ? "Đang tạo..." : "Tạo sự kiện"}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="submit"
+                    disabled={
+                      createEvent.isPending ||
+                      updateEvent.isPending ||
+                      !newSummary.trim() ||
+                      !newStart
+                    }
+                  >
+                    {updateEvent.isPending
+                      ? "Đang lưu..."
+                      : createEvent.isPending
+                        ? "Đang tạo..."
+                        : editingEvent
+                          ? "Lưu thay đổi"
+                          : "Tạo sự kiện"}
+                  </Button>
+                  {editingEvent?.htmlLink ? (
+                    <Button variant="outline" type="button" asChild>
+                      <a
+                        href={editingEvent.htmlLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="gap-1.5"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        Mở Google Calendar
+                      </a>
+                    </Button>
+                  ) : null}
+                </div>
               </form>
             </DialogContent>
           </Dialog>
@@ -697,16 +824,16 @@ export default function CalendarPage() {
                 >
                   {format(day, "d")}
                 </div>
-                <div className="space-y-0.5" onClick={(e) => e.stopPropagation()}>
-                  {dayEvents.slice(0, 3).map(({ ev, isFirst }) => {
+                <div
+                  className="max-h-[132px] sm:max-h-[160px] overflow-y-auto overflow-x-hidden overscroll-contain space-y-0.5 pr-0.5 [scrollbar-width:thin]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {dayEvents.map(({ ev, isFirst }) => {
                     const isHoliday = ev.isHoliday ?? false;
                     const content = (
-                      <>
-                        <span className="truncate flex-1 text-left">
-                          {!isFirst ? "… " : ""}{ev.summary}
-                        </span>
-                        <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-70" />
-                      </>
+                      <span className="truncate flex-1 text-left">
+                        {!isFirst ? "… " : ""}{ev.summary}
+                      </span>
                     );
                     const style = isHoliday
                       ? { backgroundColor: "#dc2626", color: "#ffffff" }
@@ -718,7 +845,7 @@ export default function CalendarPage() {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setDetailEvent(ev);
+                          openEditEvent(ev);
                         }}
                         className="flex w-full min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold truncate hover:opacity-90 transition-opacity cursor-pointer"
                         style={style}
@@ -728,11 +855,6 @@ export default function CalendarPage() {
                       </button>
                     );
                   })}
-                  {dayEvents.length > 3 && (
-                    <div className="text-[10px] text-muted-foreground px-1">
-                      +{dayEvents.length - 3} nữa
-                    </div>
-                  )}
                 </div>
               </div>
             );

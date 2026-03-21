@@ -136,3 +136,31 @@ export function useCreateCalendarEvent() {
     },
   });
 }
+
+export function useUpdateCalendarEvent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      eventId: string;
+      summary: string;
+      description?: string;
+      start: string;
+      end?: string;
+      location?: string;
+      colorId?: string;
+    }) => {
+      const { eventId, ...body } = input;
+      return fetchWithAuth(
+        `/api/calendar/events/${encodeURIComponent(eventId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
+    },
+  });
+}

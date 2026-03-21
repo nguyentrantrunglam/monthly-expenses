@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as admin from "firebase-admin";
 import { createCalendarClient } from "@/lib/google-calendar";
+import { buildGoogleCalendarSchedule } from "@/lib/google-calendar-build-schedule";
 import { verifyIdToken, getFirebaseAdmin } from "@/lib/firebase/admin";
 import { getFirestore } from "firebase-admin/firestore";
 
@@ -202,39 +203,9 @@ export async function POST(req: NextRequest) {
       event.attendees = attendeeEmails.map((email) => ({ email }));
     }
 
-    const hasTime = start.includes("T") || start.includes(" ");
-    if (hasTime) {
-      const startDate = new Date(start);
-      const endDate = end
-        ? new Date(end)
-        : new Date(startDate.getTime() + 60 * 60 * 1000);
-      event.start.dateTime = startDate.toISOString();
-      event.start.timeZone = "Asia/Ho_Chi_Minh";
-      event.end.dateTime = endDate.toISOString();
-      (event.end as { timeZone?: string }).timeZone = "Asia/Ho_Chi_Minh";
-    } else {
-      const startYmd = start.slice(0, 10);
-      const [sy, sm, sd] = startYmd.split("-").map(Number);
-      const startLocal = new Date(sy, sm - 1, sd);
-      event.start.date = startYmd;
-
-      const pad = (n: number) => String(n).padStart(2, "0");
-      const toYmd = (d: Date) =>
-        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-      let endExclusive: Date;
-      if (end) {
-        const endYmd = String(end).slice(0, 10);
-        const [ey, em, ed] = endYmd.split("-").map(Number);
-        const lastInclusive = new Date(ey, em - 1, ed);
-        endExclusive = new Date(lastInclusive);
-        endExclusive.setDate(endExclusive.getDate() + 1);
-      } else {
-        endExclusive = new Date(startLocal);
-        endExclusive.setDate(endExclusive.getDate() + 1);
-      }
-      event.end.date = toYmd(endExclusive);
-    }
+    const sched = buildGoogleCalendarSchedule(start, end);
+    event.start = sched.start;
+    event.end = sched.end;
 
     const res = await calendar.events.insert({
       calendarId: "primary",
