@@ -26,6 +26,7 @@ import {
   Users,
   ListChecks,
   StickyNote,
+  Target,
   LogOut,
   Sun,
   Moon,
@@ -100,6 +101,16 @@ const navGroups: NavGroup[] = [
         label: "Lịch gia đình",
         icon: <CalendarDays className="h-4 w-4" />,
         requiresFamily: true,
+      },
+    ],
+  },
+  {
+    title: "Cá nhân",
+    items: [
+      {
+        href: "/personal-goals",
+        label: "Mục tiêu cá nhân",
+        icon: <Target className="h-4 w-4" />,
       },
     ],
   },

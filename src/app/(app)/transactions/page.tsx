@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { differenceInDays, endOfDay, startOfDay } from "date-fns";
 import {
@@ -51,6 +52,13 @@ import {
 } from "@/components/ui/dialog";
 import { Receipt, Plus, Pencil, Trash2, X, Check, Wallet, Scale, Mic } from "lucide-react";
 import { VoiceExpenseInput } from "@/components/VoiceExpenseInput";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 const CATEGORIES = [
   "Ăn uống",
@@ -74,6 +82,90 @@ const INCOME_CATEGORIES = [
 
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
+}
+
+function createdAtToDate(createdAt: unknown): Date | null {
+  if (createdAt == null) return null;
+  let d: Date | null = null;
+  if (
+    typeof createdAt === "object" &&
+    createdAt !== null &&
+    typeof (createdAt as { toDate?: () => Date }).toDate === "function"
+  ) {
+    d = (createdAt as { toDate: () => Date }).toDate();
+  } else if (
+    typeof createdAt === "object" &&
+    createdAt !== null &&
+    typeof (createdAt as { toMillis?: () => number }).toMillis === "function"
+  ) {
+    d = new Date((createdAt as { toMillis: () => number }).toMillis());
+  } else if (createdAt instanceof Date) {
+    d = createdAt;
+  }
+  if (!d || Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function formatEntryDate(createdAt: unknown): string {
+  const d = createdAtToDate(createdAt);
+  if (!d) return "—";
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Ho_Chi_Minh",
+  }).format(d);
+}
+
+function formatEntryTime(createdAt: unknown): string {
+  const d = createdAtToDate(createdAt);
+  if (!d) return "—";
+  return new Intl.DateTimeFormat("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Ho_Chi_Minh",
+  }).format(d);
+}
+
+/** Hover: ngày/giờ nhập (createdAt). Không có dữ liệu → chỉ hiển thị children. */
+function TransactionEntryTooltip({
+  createdAt,
+  children,
+}: {
+  createdAt: unknown;
+  children: React.ReactElement<{ className?: string }>;
+}) {
+  if (!createdAtToDate(createdAt)) {
+    return children;
+  }
+  const trigger = React.cloneElement(children, {
+    className: cn(
+      children.props.className,
+      "cursor-help border-b border-dotted border-muted-foreground/45 rounded-sm"
+    ),
+  });
+  return (
+    <Tooltip delayDuration={200}>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+      <TooltipContent side="top" align="start" className="text-left">
+        <div className="space-y-1 leading-snug">
+          <p>
+            <span className="text-muted-foreground">Ngày nhập:</span>{" "}
+            <span className="font-medium tabular-nums">
+              {formatEntryDate(createdAt)}
+            </span>
+          </p>
+          <p>
+            <span className="text-muted-foreground">Giờ nhập:</span>{" "}
+            <span className="font-medium tabular-nums">
+              {formatEntryTime(createdAt)}
+            </span>
+          </p>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export default function TransactionsPage() {
@@ -1043,11 +1135,12 @@ function TransactionsTable({
   );
 
   return (
-    <Card className="overflow-hidden">
-      <Table className="table-fixed">
+    <TooltipProvider delayDuration={200}>
+      <Card className="overflow-hidden">
+        <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-muted/40">
-            <TableHead className="text-xs w-[7.5rem]">Ngày</TableHead>
+            <TableHead className="text-xs w-22 min-w-22">Ngày</TableHead>
             <TableHead className="text-xs w-24">Người chi</TableHead>
             <TableHead className="text-xs w-28">Danh mục</TableHead>
             <TableHead className="text-xs w-20">Nguồn</TableHead>
@@ -1060,13 +1153,17 @@ function TransactionsTable({
           {paged.map((tx) =>
             editingId === tx.id ? (
               <TableRow key={tx.id} className="bg-muted/20">
-                <TableCell className="p-1 align-middle">
-                  <DatePicker
-                    value={editDate}
-                    onChange={setEditDate}
-                    className="h-7 text-xs px-1.5"
-                    placeholder="Ngày"
-                  />
+                <TableCell className="p-1 align-top">
+                  <TransactionEntryTooltip createdAt={tx.createdAt}>
+                    <div className="flex w-full min-w-0 flex-col gap-0.5">
+                      <DatePicker
+                        value={editDate}
+                        onChange={setEditDate}
+                        className="h-7 text-xs px-1.5"
+                        placeholder="Ngày"
+                      />
+                    </div>
+                  </TransactionEntryTooltip>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {tx.userId === user?.uid
@@ -1170,7 +1267,13 @@ function TransactionsTable({
               </TableRow>
             ) : (
               <TableRow key={tx.id}>
-                <TableCell className="text-xs tabular-nums">{tx.date}</TableCell>
+                <TableCell className="text-xs tabular-nums align-top">
+                  <TransactionEntryTooltip createdAt={tx.createdAt}>
+                    <span className="inline-block text-xs tabular-nums leading-tight">
+                      {tx.date}
+                    </span>
+                  </TransactionEntryTooltip>
+                </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {tx.userId === user?.uid
                     ? "Tôi"
@@ -1306,6 +1409,7 @@ function TransactionsTable({
           </Pagination>
         </div>
       )}
-    </Card>
+      </Card>
+    </TooltipProvider>
   );
 }

@@ -28,6 +28,36 @@ export interface Transaction {
   createdAt: unknown;
 }
 
+function createdAtToMs(v: unknown): number {
+  if (v == null) return 0;
+  if (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as { toMillis?: () => number }).toMillis === "function"
+  ) {
+    return (v as { toMillis: () => number }).toMillis();
+  }
+  if (v instanceof Date) return v.getTime();
+  return 0;
+}
+
+/** Mốc thời gian để sắp xếp trong cùng một ngày: ISO datetime trên `date` nếu có, không thì `createdAt`. */
+function transactionInstantMs(t: Transaction): number {
+  const d = (t.date ?? "").trim();
+  if (d.length > 10 && (d.includes("T") || d.includes(" "))) {
+    const ms = new Date(d).getTime();
+    if (!Number.isNaN(ms)) return ms;
+  }
+  return createdAtToMs(t.createdAt);
+}
+
+function sortTransactionsByDateAndTime(a: Transaction, b: Transaction): number {
+  const dayA = (a.date ?? "").slice(0, 10);
+  const dayB = (b.date ?? "").slice(0, 10);
+  if (dayA !== dayB) return dayB.localeCompare(dayA);
+  return transactionInstantMs(a) - transactionInstantMs(b);
+}
+
 export function useTransactions(filters?: {
   userId?: string;
   month?: string;
@@ -82,6 +112,8 @@ export function useTransactions(filters?: {
       if (filters?.category) {
         list = list.filter((t) => t.category === filters.category);
       }
+
+      list.sort(sortTransactionsByDateAndTime);
 
       setTransactions(list);
       setLoading(false);
