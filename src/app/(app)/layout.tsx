@@ -26,6 +26,7 @@ import {
   Users,
   ListChecks,
   StickyNote,
+  MessagesSquare,
   Target,
   LogOut,
   Sun,
@@ -100,6 +101,12 @@ const navGroups: NavGroup[] = [
         href: "/calendar",
         label: "Lịch gia đình",
         icon: <CalendarDays className="h-4 w-4" />,
+        requiresFamily: true,
+      },
+      {
+        href: "/chat",
+        label: "Chat gia đình",
+        icon: <MessagesSquare className="h-4 w-4" />,
         requiresFamily: true,
       },
     ],
@@ -295,9 +302,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl px-4 py-6 md:px-8 md:py-8">
+      {/* Main content — min-h-0 để trang con (chat) có thể flex + scroll nội bộ */}
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-4 py-6 md:px-8 md:py-8">
           {children}
         </div>
       </main>
