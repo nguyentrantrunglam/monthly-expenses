@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { useThemeStore } from "@/hooks/useTheme";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -32,6 +32,8 @@ import {
   Sun,
   Moon,
   ChevronsUpDown,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -43,9 +45,17 @@ interface NavItem {
   requiresFamily?: boolean;
 }
 
-interface NavGroup {
+interface NavSubsection {
   title: string;
   items: NavItem[];
+}
+
+interface NavGroup {
+  title: string;
+  /** Nhóm phẳng (vd. Tổng quan, Cá nhân) */
+  items?: NavItem[];
+  /** Nhóm lồng (vd. Gia đình → Chi tiêu / Kế hoạch) */
+  subsections?: NavSubsection[];
 }
 
 const navGroups: NavGroup[] = [
@@ -60,54 +70,64 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    title: "Chi tiêu",
-    items: [
+    title: "Gia đình",
+    subsections: [
       {
-        href: "/session",
-        label: "Session tháng",
-        icon: <CalendarRange className="h-4 w-4" />,
-        requiresFamily: true,
+        title: "Chi tiêu",
+        items: [
+          {
+            href: "/session",
+            label: "Session tháng",
+            icon: <CalendarRange className="h-4 w-4" />,
+            requiresFamily: true,
+          },
+          {
+            href: "/transactions",
+            label: "Giao dịch",
+            icon: <Receipt className="h-4 w-4" />,
+            requiresFamily: true,
+          },
+          {
+            href: "/savings",
+            label: "Quỹ tiết kiệm",
+            icon: <PiggyBank className="h-4 w-4" />,
+            requiresFamily: true,
+          },
+          {
+            href: "/settings/fixed-items",
+            label: "Khoản cố định",
+            icon: <ListChecks className="h-4 w-4" />,
+            requiresFamily: true,
+          },
+        ],
       },
       {
-        href: "/transactions",
-        label: "Giao dịch",
-        icon: <Receipt className="h-4 w-4" />,
-        requiresFamily: true,
+        title: "Kế hoạch",
+        items: [
+          {
+            href: "/notes",
+            label: "Ghi chú chung",
+            icon: <StickyNote className="h-4 w-4" />,
+            requiresFamily: true,
+          },
+          {
+            href: "/calendar",
+            label: "Lịch gia đình",
+            icon: <CalendarDays className="h-4 w-4" />,
+            requiresFamily: true,
+          },
+        ],
       },
       {
-        href: "/savings",
-        label: "Quỹ tiết kiệm",
-        icon: <PiggyBank className="h-4 w-4" />,
-        requiresFamily: true,
-      },
-      {
-        href: "/settings/fixed-items",
-        label: "Khoản cố định",
-        icon: <ListChecks className="h-4 w-4" />,
-        requiresFamily: true,
-      },
-    ],
-  },
-  {
-    title: "Kế hoạch",
-    items: [
-      {
-        href: "/notes",
-        label: "Ghi chú chung",
-        icon: <StickyNote className="h-4 w-4" />,
-        requiresFamily: true,
-      },
-      {
-        href: "/calendar",
-        label: "Lịch gia đình",
-        icon: <CalendarDays className="h-4 w-4" />,
-        requiresFamily: true,
-      },
-      {
-        href: "/chat",
-        label: "Chat gia đình",
-        icon: <MessagesSquare className="h-4 w-4" />,
-        requiresFamily: true,
+        title: "Chat",
+        items: [
+          {
+            href: "/chat",
+            label: "Chat gia đình",
+            icon: <MessagesSquare className="h-4 w-4" />,
+            requiresFamily: true,
+          },
+        ],
       },
     ],
   },
@@ -123,12 +143,53 @@ const navGroups: NavGroup[] = [
   },
 ];
 
+function groupContainsPath(group: NavGroup, pathname: string): boolean {
+  if (group.items) {
+    for (const l of group.items) {
+      if (pathname.startsWith(l.href)) return true;
+    }
+  }
+  if (group.subsections) {
+    for (const sub of group.subsections) {
+      for (const l of sub.items) {
+        if (pathname.startsWith(l.href)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const authLoading = useAuthStore((s) => s.loading);
   const { theme, setTheme } = useThemeStore();
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    for (const g of navGroups) init[g.title] = true;
+    return init;
+  });
+
+  const toggleGroup = useCallback((title: string) => {
+    setOpenGroups((prev) => ({ ...prev, [title]: !prev[title] }));
+  }, []);
+
+  /** Mở nhóm đang chứa route hiện tại (sau điều hướng). */
+  useEffect(() => {
+    setOpenGroups((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const g of navGroups) {
+        if (groupContainsPath(g, pathname) && next[g.title] === false) {
+          next[g.title] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [pathname]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -186,35 +247,92 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {navGroups.map((group) => (
-            <div key={group.title} className="mb-5">
-              <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-                {group.title}
-              </p>
-              <div className="space-y-0.5">
-                {group.items.map((link) => {
-                  if (link.requiresFamily && !user?.familyId) {
-                    return null;
-                  }
-                  const active = pathname.startsWith(link.href);
-                  return (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
-                        active
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                      }`}
-                    >
-                      {link.icon}
-                      {link.label}
-                    </Link>
-                  );
-                })}
+          {navGroups.map((group) => {
+            const isOpen = openGroups[group.title] !== false;
+            return (
+              <div key={group.title} className="mb-5">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.title)}
+                  className="mb-1.5 flex w-full items-center gap-1 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  aria-expanded={isOpen}
+                >
+                  <span className="flex-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+                    {group.title}
+                  </span>
+                  {isOpen ? (
+                    <ChevronDown
+                      className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                      aria-hidden
+                    />
+                  ) : (
+                    <ChevronRight
+                      className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                      aria-hidden
+                    />
+                  )}
+                </button>
+                {isOpen ? (
+                  group.subsections ? (
+                    <div className="ml-2 space-y-4 border-l border-border/60 pl-3">
+                      {group.subsections.map((sub) => (
+                        <div key={sub.title} className="space-y-1">
+                          <p className="px-0.5 text-xs font-medium text-muted-foreground">
+                            {sub.title}
+                          </p>
+                          <div className="space-y-0.5 pl-2">
+                            {sub.items.map((link) => {
+                              if (link.requiresFamily && !user?.familyId) {
+                                return null;
+                              }
+                              const active = pathname.startsWith(link.href);
+                              return (
+                                <Link
+                                  key={link.href}
+                                  href={link.href}
+                                  className={`flex items-center gap-2.5 rounded-lg py-2 pl-3 pr-2 text-[13px] font-medium transition-colors ${
+                                    active
+                                      ? "bg-primary text-primary-foreground shadow-sm"
+                                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                  }`}
+                                >
+                                  {link.icon}
+                                  {link.label}
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {(group.items ?? []).map((link) => {
+                        if (link.requiresFamily && !user?.familyId) {
+                          return null;
+                        }
+                        const active = pathname.startsWith(link.href);
+                        return (
+                          <Link
+                            key={link.href}
+                            href={link.href}
+                            className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
+                              active
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            }`}
+                          >
+                            {link.icon}
+                            {link.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )
+                ) : null}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </nav>
 
         {/* User menu */}

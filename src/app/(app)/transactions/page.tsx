@@ -38,9 +38,10 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Receipt,
@@ -54,7 +55,7 @@ import {
   Mic,
   Loader2,
 } from "lucide-react";
-import { VoiceExpenseInput } from "@/components/VoiceExpenseInput";
+import { VoiceExpensePanel } from "@/components/VoiceExpenseInput";
 import {
   Tooltip,
   TooltipContent,
@@ -62,6 +63,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { nanoid } from "nanoid";
 
 const CATEGORIES = [
   "Ăn uống",
@@ -82,6 +84,10 @@ const INCOME_CATEGORIES = [
   "Hoàn tiền",
   "Thu khác",
 ];
+
+/** Tiêu đề giao dịch cho phần lệch không nhớ rõ khi đối soát số dư. */
+const RECON_UNKNOWN_EXPENSE_TITLE = "Chi không nhớ rõ (đối soát)";
+const RECON_TRANSACTION_NOTE = "Đối soát số dư ví";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
@@ -183,7 +189,11 @@ export default function TransactionsPage() {
       category: filterCategory || undefined,
     });
 
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [entryModalOpen, setEntryModalOpen] = useState(false);
+  const [entryModalTab, setEntryModalTab] = useState<"manual" | "voice">(
+    "manual",
+  );
+  const [voiceRecording, setVoiceRecording] = useState(false);
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
@@ -205,7 +215,13 @@ export default function TransactionsPage() {
   const [editTxType, setEditTxType] = useState<"expense" | "income">("expense");
   const [editSaving, setEditSaving] = useState(false);
 
-  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [reconOpen, setReconOpen] = useState(false);
+  const [reconActualInput, setReconActualInput] = useState("");
+  const [reconLines, setReconLines] = useState<
+    { id: string; title: string; amount: string; category: string }[]
+  >([]);
+  const [reconSubmitting, setReconSubmitting] = useState(false);
+  const [reconError, setReconError] = useState<string | null>(null);
 
   // Budget tracking: load all locked sessions with allocations
   const [sessionBudgets, setSessionBudgets] = useState<
@@ -352,7 +368,7 @@ export default function TransactionsPage() {
       setTitle("");
       setAmount("");
       setNote("");
-      setShowAddModal(false);
+      setEntryModalOpen(false);
       setAddTxType("expense");
     } catch (err) {
       console.error(err);
@@ -520,6 +536,138 @@ export default function TransactionsPage() {
   const sharedRemaining =
     sharedBudgetTotal != null ? sharedBudgetTotal - sharedSpending : null;
 
+  /**
+   * Số tiền còn lại theo app (thẻ ngân sách) — so với số dư thực tế khi đối soát.
+   * Chỉ có khi session đã khóa có phân bổ; tab Tất cả không dùng một số duy nhất.
+   */
+  const reconCalculatedRemaining =
+    scopeView === "shared_pool"
+      ? sharedRemaining
+      : scopeView === "personal_mine"
+        ? personalRemaining
+        : null;
+
+  const reconActualNum = useMemo(() => {
+    const t = reconActualInput.trim();
+    if (!t) return null;
+    const v = parseCurrencyInput(reconActualInput);
+    if (Number.isNaN(v)) return null;
+    return v;
+  }, [reconActualInput]);
+
+  /** Chênh lệch cần bù (thiếu tiền mặt so với số còn lại theo app). */
+  const reconShortfall =
+    reconActualNum != null && reconCalculatedRemaining != null
+      ? Math.max(0, reconCalculatedRemaining - reconActualNum)
+      : null;
+
+  const reconRememberedSum = useMemo(() => {
+    let s = 0;
+    for (const line of reconLines) {
+      const a = parseCurrencyInput(line.amount);
+      if (a != null && !Number.isNaN(a) && a > 0) s += a;
+    }
+    return s;
+  }, [reconLines]);
+
+  const reconRemainder =
+    reconShortfall != null
+      ? Math.max(0, reconShortfall - reconRememberedSum)
+      : null;
+
+  const reconSumExceedsShortfall =
+    reconShortfall != null && reconRememberedSum > reconShortfall + 0.5;
+
+  const reconSpendingType: "personal" | "shared_pool" =
+    scopeView === "shared_pool" ? "shared_pool" : "personal";
+
+  const addReconLine = () => {
+    setReconLines((prev) => [
+      ...prev,
+      { id: nanoid(8), title: "", amount: "", category: "Khác" },
+    ]);
+  };
+
+  const removeReconLine = (id: string) => {
+    setReconLines((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const submitReconciliation = async () => {
+    setReconError(null);
+    if (reconCalculatedRemaining == null) {
+      setReconError(
+        "Chưa có số còn lại để so — cần chọn session đã khóa có phân bổ và tab Cá nhân hoặc Quỹ chung."
+      );
+      return;
+    }
+    if (reconActualNum == null) {
+      setReconError("Nhập số dư thực tế hiện tại.");
+      return;
+    }
+    if (reconShortfall == null || reconShortfall <= 0) {
+      setReconError(
+        "Không có khoản thiếu cần bù — thực tế không thấp hơn số còn lại theo app."
+      );
+      return;
+    }
+    if (reconSumExceedsShortfall) {
+      setReconError(
+        "Tổng các khoản nhớ được lớn hơn phần lệch. Hãy chỉnh lại số tiền."
+      );
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const linesToPost: { title: string; amount: number; category: string }[] =
+      [];
+    for (const line of reconLines) {
+      const amt = parseCurrencyInput(line.amount);
+      if (amt == null || Number.isNaN(amt) || amt <= 0) continue;
+      const title = line.title.trim();
+      if (!title) {
+        setReconError("Nhập tên gợi nhớ cho mỗi khoản chi đã điền số tiền.");
+        return;
+      }
+      linesToPost.push({
+        title,
+        amount: amt,
+        category: line.category || "Khác",
+      });
+    }
+    if (reconRemainder != null && reconRemainder > 0) {
+      linesToPost.push({
+        title: RECON_UNKNOWN_EXPENSE_TITLE,
+        amount: reconRemainder,
+        category: "Khác",
+      });
+    }
+    if (linesToPost.length === 0) {
+      setReconError("Không có khoản nào để ghi — thêm dòng hoặc kiểm tra lệch.");
+      return;
+    }
+    setReconSubmitting(true);
+    try {
+      for (const row of linesToPost) {
+        await addTransaction({
+          title: row.title,
+          amount: row.amount,
+          type: "expense",
+          category: row.category,
+          spendingType: reconSpendingType,
+          note: RECON_TRANSACTION_NOTE,
+          date: today,
+        });
+      }
+      setReconOpen(false);
+      setReconActualInput("");
+      setReconLines([]);
+    } catch (e) {
+      console.error(e);
+      setReconError("Không lưu được giao dịch. Thử lại sau.");
+    } finally {
+      setReconSubmitting(false);
+    }
+  };
+
   const personalPct =
     personalBudgetTotal != null && personalBudgetTotal > 0
       ? Math.round((personalSpending / personalBudgetTotal) * 100)
@@ -564,36 +712,84 @@ export default function TransactionsPage() {
             Ghi chép thu và chi hàng ngày
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <VoiceExpenseInput
-            open={voiceOpen}
-            onOpenChange={setVoiceOpen}
-            onConfirm={handleConfirmVoice}
-            defaultDate={date}
-            defaultSpendingType={spendingType}
-            trigger={
-              <Button size="sm" variant="outline" className="gap-1.5">
-                <Mic className="h-4 w-4" /> Thu âm
-              </Button>
-            }
-          />
-          <Dialog open={showAddModal} onOpenChange={(open) => {
-            setShowAddModal(open);
-            if (!open) {
-              setFormError(null);
-              setAddTxType("expense");
-            }
-          }}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-1.5">
-                <Plus className="h-4 w-4" /> Thêm giao dịch
-              </Button>
-            </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-6">
-            <DialogHeader>
-              <DialogTitle>Thêm giao dịch</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleAdd} className="space-y-3 mt-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              setEntryModalTab("manual");
+              setEntryModalOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4" /> Thêm giao dịch
+          </Button>
+          <Dialog
+            open={entryModalOpen}
+            onOpenChange={(open) => {
+              setEntryModalOpen(open);
+              if (!open) {
+                setFormError(null);
+                setAddTxType("expense");
+              }
+            }}
+          >
+            <DialogContent
+              className="max-w-lg max-h-[90vh] flex flex-col overflow-hidden p-6 min-h-0"
+              onPointerDownOutside={(e) => {
+                if (entryModalTab === "voice" && voiceRecording) {
+                  e.preventDefault();
+                }
+              }}
+              onEscapeKeyDown={(e) => {
+                if (entryModalTab === "voice" && voiceRecording) {
+                  e.preventDefault();
+                }
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>Thêm giao dịch</DialogTitle>
+              </DialogHeader>
+              <div
+                className="mt-4 inline-flex w-full max-w-md shrink-0 rounded-lg border bg-muted/40 p-0.5"
+                role="tablist"
+                aria-label="Cách nhập giao dịch"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={entryModalTab === "manual"}
+                  className={`flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                    entryModalTab === "manual"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setEntryModalTab("manual")}
+                >
+                  Nhập tay
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={entryModalTab === "voice"}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                    entryModalTab === "voice"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setEntryModalTab("voice")}
+                >
+                  <Mic className="h-3.5 w-3.5" />
+                  Thu âm
+                </button>
+              </div>
+              <div className="mt-4 flex min-h-0 flex-1 flex-col">
+                {entryModalTab === "manual" ? (
+            <form
+              onSubmit={handleAdd}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
               <div className="space-y-1.5">
                 <Label>Loại giao dịch</Label>
                 <div className="flex gap-2">
@@ -730,12 +926,13 @@ export default function TransactionsPage() {
               {formError && (
                 <p className="text-xs text-destructive">{formError}</p>
               )}
-              <div className="flex justify-end gap-2 pt-2">
+              </div>
+              <div className="mt-3 flex shrink-0 justify-end gap-2 border-t pt-3">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => setEntryModalOpen(false)}
                 >
                   Hủy
                 </Button>
@@ -744,8 +941,283 @@ export default function TransactionsPage() {
                 </Button>
               </div>
             </form>
-          </DialogContent>
-        </Dialog>
+                ) : (
+                  <div className="min-h-0 flex-1 overflow-y-auto">
+                    <VoiceExpensePanel
+                      showHeader={false}
+                      active={entryModalOpen && entryModalTab === "voice"}
+                      onConfirm={handleConfirmVoice}
+                      onClose={() => setEntryModalOpen(false)}
+                      onRecordingChange={setVoiceRecording}
+                    />
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog
+            open={reconOpen}
+            onOpenChange={(open) => {
+              setReconOpen(open);
+              if (open) {
+                setReconError(null);
+                setReconActualInput("");
+                setReconLines([]);
+              }
+            }}
+          >
+            <DialogContent className="max-h-[min(90dvh,720px)] overflow-y-auto sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Đối soát số dư ví</DialogTitle>
+                <DialogDescription>
+                  Nhập <strong>số dư thực tế</strong> trong ví và so với{" "}
+                  <strong>số còn lại đã tính</strong> trên thẻ ngân sách (cùng
+                  session và tab Cá nhân / Quỹ chung). Nếu thiếu tiền so với số
+                  đó, bạn có thể ghi bù các khoản chi nhớ được; phần còn lại lưu
+                  là chi không nhớ rõ.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 pt-1">
+                {reconCalculatedRemaining == null ? (
+                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+                    Chưa có số còn lại để so: cần{" "}
+                    <strong>chọn session đã khóa có phân bổ ngân sách</strong> và
+                    tab <strong>Cá nhân</strong> hoặc <strong>Quỹ chung</strong>{" "}
+                    (không dùng tab Tất cả).
+                  </p>
+                ) : null}
+                <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm space-y-1">
+                  <p>
+                    <span className="text-muted-foreground">
+                      Số còn lại theo app (đã tính):
+                    </span>{" "}
+                    <span className="font-semibold tabular-nums">
+                      {reconCalculatedRemaining != null
+                        ? `${fmt(reconCalculatedRemaining)} đ`
+                        : "—"}
+                    </span>
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="recon-actual">
+                    Số dư thực tế hiện tại (đồng)
+                  </Label>
+                  <CurrencyInput
+                    id="recon-actual"
+                    value={reconActualInput}
+                    onChange={setReconActualInput}
+                    placeholder="Đếm tiền trong ví"
+                    className="font-mono tabular-nums"
+                  />
+                </div>
+                <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm space-y-1">
+                  {reconCalculatedRemaining != null && reconActualNum != null ? (
+                    <>
+                      <p>
+                        <span className="text-muted-foreground">
+                          Chênh lệch cần bù (thiếu so với app):
+                        </span>{" "}
+                        <span
+                          className={cn(
+                            "font-semibold tabular-nums",
+                            (reconShortfall ?? 0) > 0
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          {fmt(reconShortfall ?? 0)} đ
+                        </span>
+                      </p>
+                      {reconShortfall === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Không thiếu so với số còn lại theo app — không cần form
+                          bù chi.
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {reconCalculatedRemaining == null
+                        ? "Chọn đủ điều kiện phía trên để so sánh."
+                        : "Nhập số dư thực tế để xem chênh lệch."}
+                    </p>
+                  )}
+                </div>
+                {reconCalculatedRemaining != null &&
+                reconActualNum != null &&
+                reconActualNum > reconCalculatedRemaining ? (
+                  <p className="text-sm text-muted-foreground">
+                    Số dư thực tế cao hơn số còn lại theo app — không cần ghi chi
+                    bù từ đối soát này.
+                  </p>
+                ) : null}
+                {reconShortfall != null && reconShortfall > 0 ? (
+                  <div className="space-y-3">
+                    <p className="text-[11px] text-muted-foreground">
+                      Các giao dịch điều chỉnh sẽ ghi vào{" "}
+                      <strong>
+                        {reconSpendingType === "shared_pool"
+                          ? "quỹ chung"
+                          : "quỹ cá nhân của bạn"}
+                      </strong>{" "}
+                      (theo tab quỹ đang chọn).
+                    </p>
+                    <div>
+                      <p className="text-sm font-medium">
+                        Chi bù — các khoản bạn nhớ
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Thêm từng khoản (tên + số tiền). Phần chênh lệch chưa gán
+                        sẽ ghi là &quot;{RECON_UNKNOWN_EXPENSE_TITLE}&quot;.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      {reconLines.map((line) => (
+                        <div
+                          key={line.id}
+                          className="flex flex-wrap items-end gap-2 rounded-lg border p-2"
+                        >
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <Label className="text-[11px]">Tên khoản</Label>
+                            <Input
+                              value={line.title}
+                              onChange={(e) =>
+                                setReconLines((prev) =>
+                                  prev.map((r) =>
+                                    r.id === line.id
+                                      ? { ...r, title: e.target.value }
+                                      : r
+                                  )
+                                )
+                              }
+                              placeholder="Ví dụ: Cà phê, xăng…"
+                            />
+                          </div>
+                          <div className="w-28 space-y-1">
+                            <Label className="text-[11px]">Số tiền</Label>
+                            <CurrencyInput
+                              value={line.amount}
+                              onChange={(v) =>
+                                setReconLines((prev) =>
+                                  prev.map((r) =>
+                                    r.id === line.id ? { ...r, amount: v } : r
+                                  )
+                                )
+                              }
+                              className="font-mono text-sm"
+                            />
+                          </div>
+                          <div className="w-36 space-y-1">
+                            <Label className="text-[11px]">Danh mục</Label>
+                            <Select
+                              value={line.category}
+                              onValueChange={(v) =>
+                                setReconLines((prev) =>
+                                  prev.map((r) =>
+                                    r.id === line.id ? { ...r, category: v } : r
+                                  )
+                                )
+                              }
+                            >
+                              <SelectTrigger className="h-9 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {CATEGORIES.map((c) => (
+                                  <SelectItem key={c} value={c}>
+                                    {c}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="shrink-0"
+                            onClick={() => removeReconLine(line.id)}
+                            aria-label="Xóa dòng"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-1.5"
+                        onClick={addReconLine}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Thêm khoản bù
+                      </Button>
+                    </div>
+                    {reconRemainder != null && reconShortfall > 0 ? (
+                      <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground">
+                          Phần còn lại (tự động):
+                        </span>{" "}
+                        <span className="font-medium tabular-nums">
+                          {fmt(reconRemainder)} đ
+                        </span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          — {RECON_UNKNOWN_EXPENSE_TITLE}
+                        </span>
+                      </div>
+                    ) : null}
+                    {reconSumExceedsShortfall ? (
+                      <p className="text-sm text-destructive">
+                        Tổng các khoản nhớ được vượt quá phần lệch — giảm số tiền
+                        hoặc xóa bớt dòng.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {reconError ? (
+                  <p className="text-sm text-destructive">{reconError}</p>
+                ) : null}
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setReconOpen(false)}
+                >
+                  Đóng
+                </Button>
+                <Button
+                  type="button"
+                  disabled={
+                    reconSubmitting ||
+                    reconCalculatedRemaining == null ||
+                    reconShortfall == null ||
+                    reconShortfall <= 0 ||
+                    reconSumExceedsShortfall ||
+                    reconActualNum == null
+                  }
+                  onClick={() => void submitReconciliation()}
+                >
+                  {reconSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Ghi các khoản bù
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5 shrink-0"
+            onClick={() => setReconOpen(true)}
+          >
+            <Scale className="h-4 w-4" />
+            Đối soát số dư
+          </Button>
         </div>
       </div>
 
