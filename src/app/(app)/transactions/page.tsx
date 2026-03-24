@@ -86,6 +86,7 @@ const INCOME_CATEGORIES = [
 
 /** Tiêu đề giao dịch cho phần lệch không nhớ rõ khi đối soát số dư. */
 const RECON_UNKNOWN_EXPENSE_TITLE = "Chi không nhớ rõ (đối soát)";
+const RECON_UNKNOWN_INCOME_TITLE = "Thu không nhớ rõ (đối soát)";
 const RECON_TRANSACTION_NOTE = "Đối soát số dư ví";
 
 /** Một dòng chi bù trong đối soát — cùng trường với form thêm giao dịch. */
@@ -564,14 +565,26 @@ export default function TransactionsPage() {
     return v;
   }, [reconActualInput]);
 
-  /** Chênh lệch cần bù (thiếu tiền mặt so với số còn lại theo app). */
+  /** Thiếu so với app (ví ít tiền hơn số còn lại đã tính). */
   const reconShortfall =
     reconActualNum != null && reconCalculatedRemaining != null
       ? Math.max(0, reconCalculatedRemaining - reconActualNum)
       : null;
 
-  /** Chỉ cộng các khoản chi — dùng để khớp phần lệch so với ví. */
-  const reconRememberedSum = useMemo(() => {
+  /** Thừa so với app (ví nhiều tiền hơn số còn lại đã tính). */
+  const reconSurplus =
+    reconActualNum != null && reconCalculatedRemaining != null
+      ? Math.max(0, reconActualNum - reconCalculatedRemaining)
+      : null;
+
+  /** Có chênh lệch đáng kể so với app (VND nguyên — epsilon 0.5). */
+  const reconHasDiscrepancy =
+    reconActualNum != null &&
+    reconCalculatedRemaining != null &&
+    ((reconShortfall ?? 0) > 0.5 || (reconSurplus ?? 0) > 0.5);
+
+  /** Tổng khoản chi đã nhớ — khớp phần thiếu. */
+  const reconRememberedExpenseSum = useMemo(() => {
     let s = 0;
     for (const line of reconLines) {
       if (line.type !== "expense") continue;
@@ -581,13 +594,36 @@ export default function TransactionsPage() {
     return s;
   }, [reconLines]);
 
-  const reconRemainder =
-    reconShortfall != null
-      ? Math.max(0, reconShortfall - reconRememberedSum)
+  /** Tổng khoản thu đã nhớ — khớp phần thừa. */
+  const reconRememberedIncomeSum = useMemo(() => {
+    let s = 0;
+    for (const line of reconLines) {
+      if (line.type !== "income") continue;
+      const a = parseCurrencyInput(line.amount);
+      if (a != null && !Number.isNaN(a) && a > 0) s += a;
+    }
+    return s;
+  }, [reconLines]);
+
+  const reconRemainderExpense =
+    reconShortfall != null && reconShortfall > 0.5
+      ? Math.max(0, reconShortfall - reconRememberedExpenseSum)
+      : null;
+
+  const reconRemainderIncome =
+    reconSurplus != null && reconSurplus > 0.5
+      ? Math.max(0, reconSurplus - reconRememberedIncomeSum)
       : null;
 
   const reconSumExceedsShortfall =
-    reconShortfall != null && reconRememberedSum > reconShortfall + 0.5;
+    reconShortfall != null &&
+    reconShortfall > 0.5 &&
+    reconRememberedExpenseSum > reconShortfall + 0.5;
+
+  const reconSumExceedsSurplus =
+    reconSurplus != null &&
+    reconSurplus > 0.5 &&
+    reconRememberedIncomeSum > reconSurplus + 0.5;
 
   const reconSpendingType: "personal" | "shared_pool" =
     scopeView === "shared_pool" ? "shared_pool" : "personal";
@@ -642,15 +678,21 @@ export default function TransactionsPage() {
       setReconError("Nhập số dư thực tế hiện tại.");
       return;
     }
-    if (reconShortfall == null || reconShortfall <= 0) {
+    if (!reconHasDiscrepancy) {
       setReconError(
-        "Không có khoản thiếu cần bù — thực tế không thấp hơn số còn lại theo app."
+        "Số dư thực tế trùng với app — không cần ghi điều chỉnh (hoặc nhập số khác).",
       );
       return;
     }
-    if (reconSumExceedsShortfall) {
+    if (reconShortfall != null && reconShortfall > 0.5 && reconSumExceedsShortfall) {
       setReconError(
-        "Tổng các khoản nhớ được lớn hơn phần lệch. Hãy chỉnh lại số tiền."
+        "Tổng các khoản chi nhớ được vượt quá phần thiếu so với app. Hãy chỉnh lại số tiền.",
+      );
+      return;
+    }
+    if (reconSurplus != null && reconSurplus > 0.5 && reconSumExceedsSurplus) {
+      setReconError(
+        "Tổng các khoản thu nhớ được vượt quá phần thừa so với app. Hãy chỉnh lại số tiền.",
       );
       return;
     }
@@ -687,12 +729,33 @@ export default function TransactionsPage() {
         note: line.note.trim(),
       });
     }
-    if (reconRemainder != null && reconRemainder > 0) {
+    if (
+      reconRemainderExpense != null &&
+      reconRemainderExpense > 0.5 &&
+      reconShortfall != null &&
+      reconShortfall > 0.5
+    ) {
       linesToPost.push({
         title: RECON_UNKNOWN_EXPENSE_TITLE,
-        amount: reconRemainder,
+        amount: reconRemainderExpense,
         category: "Khác",
         type: "expense",
+        spendingType: reconSpendingType,
+        date: today,
+        note: RECON_TRANSACTION_NOTE,
+      });
+    }
+    if (
+      reconRemainderIncome != null &&
+      reconRemainderIncome > 0.5 &&
+      reconSurplus != null &&
+      reconSurplus > 0.5
+    ) {
+      linesToPost.push({
+        title: RECON_UNKNOWN_INCOME_TITLE,
+        amount: reconRemainderIncome,
+        category: INCOME_CATEGORIES[0],
+        type: "income",
         spendingType: reconSpendingType,
         date: today,
         note: RECON_TRANSACTION_NOTE,
@@ -1030,9 +1093,10 @@ export default function TransactionsPage() {
                 <DialogDescription>
                   Nhập <strong>số dư thực tế</strong> trong ví và so với{" "}
                   <strong>số còn lại đã tính</strong> trên thẻ ngân sách (cùng
-                  session và tab Cá nhân / Quỹ chung). Nếu thiếu tiền so với số
-                  đó, bạn có thể ghi bù các khoản chi nhớ được; phần còn lại lưu
-                  là chi không nhớ rõ.
+                  session và tab Cá nhân / Quỹ chung). Khi{" "}
+                  <strong>lệch so với app</strong> (thiếu hoặc thừa), bạn có thể
+                  ghi các giao dịch điều chỉnh; phần chưa gán sẽ tự động ghi là
+                  chi/thu không nhớ rõ.
                 </DialogDescription>
               </DialogHeader>
               <div className="min-h-0 flex-1 overflow-y-auto pr-1 pt-1">
@@ -1069,17 +1133,17 @@ export default function TransactionsPage() {
                     className="font-mono tabular-nums"
                   />
                 </div>
-                <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm space-y-1">
+                <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm space-y-1.5">
                   {reconCalculatedRemaining != null && reconActualNum != null ? (
                     <>
                       <p>
                         <span className="text-muted-foreground">
-                          Chênh lệch cần bù (thiếu so với app):
+                          Thiếu so với app (ví thấp hơn):
                         </span>{" "}
                         <span
                           className={cn(
                             "font-semibold tabular-nums",
-                            (reconShortfall ?? 0) > 0
+                            (reconShortfall ?? 0) > 0.5
                               ? "text-amber-600 dark:text-amber-400"
                               : "text-muted-foreground"
                           )}
@@ -1087,10 +1151,24 @@ export default function TransactionsPage() {
                           {fmt(reconShortfall ?? 0)} đ
                         </span>
                       </p>
-                      {reconShortfall === 0 ? (
+                      <p>
+                        <span className="text-muted-foreground">
+                          Thừa so với app (ví cao hơn):
+                        </span>{" "}
+                        <span
+                          className={cn(
+                            "font-semibold tabular-nums",
+                            (reconSurplus ?? 0) > 0.5
+                              ? "text-teal-600 dark:text-teal-400"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          {fmt(reconSurplus ?? 0)} đ
+                        </span>
+                      </p>
+                      {!reconHasDiscrepancy ? (
                         <p className="text-xs text-muted-foreground">
-                          Không thiếu so với số còn lại theo app — không cần form
-                          bù chi.
+                          Trùng với app — không cần ghi điều chỉnh.
                         </p>
                       ) : null}
                     </>
@@ -1102,29 +1180,25 @@ export default function TransactionsPage() {
                     </p>
                   )}
                 </div>
-                {reconCalculatedRemaining != null &&
-                reconActualNum != null &&
-                reconActualNum > reconCalculatedRemaining ? (
-                  <p className="text-sm text-muted-foreground">
-                    Số dư thực tế cao hơn số còn lại theo app — không cần ghi chi
-                    bù từ đối soát này.
-                  </p>
-                ) : null}
-                {reconShortfall != null && reconShortfall > 0 ? (
+                {reconHasDiscrepancy ? (
                   <div className="space-y-3">
                     <p className="text-[11px] text-muted-foreground">
                       Mỗi dòng điền như thêm giao dịch (loại, quỹ, ngày, ghi chú…).
-                      Tổng các khoản <strong>chi</strong> nhớ được không vượt quá
-                      phần lệch; khoản <strong>thu</strong> vẫn được ghi nhưng
-                      không tính vào tổng bù lệch.
+                      Nếu <strong>thiếu</strong> so với app: tổng các khoản{" "}
+                      <strong>chi</strong> không vượt quá phần thiếu; phần còn lại
+                      ghi &quot;{RECON_UNKNOWN_EXPENSE_TITLE}&quot;. Nếu{" "}
+                      <strong>thừa</strong>: tổng các khoản <strong>thu</strong>{" "}
+                      không vượt quá phần thừa; phần còn lại ghi &quot;
+                      {RECON_UNKNOWN_INCOME_TITLE}&quot;. Các dòng còn lại vẫn
+                      được lưu nhưng không tính vào hai tổng này.
                     </p>
                     <div>
                       <p className="text-sm font-medium">
-                        Chi bù — các khoản bạn nhớ
+                        Ghi nhớ được — điều chỉnh sổ
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Phần chênh lệch chưa gán sẽ ghi tự động là &quot;
-                        {RECON_UNKNOWN_EXPENSE_TITLE}&quot;.
+                        Phần chưa gán khớp sẽ tự động thêm một dòng chi hoặc thu
+                        không nhớ rõ (tùy thiếu hay thừa).
                       </p>
                     </div>
                     <div className="space-y-3">
@@ -1330,13 +1404,16 @@ export default function TransactionsPage() {
                         Thêm khoản bù
                       </Button>
                     </div>
-                    {reconRemainder != null && reconShortfall > 0 ? (
+                    {reconRemainderExpense != null &&
+                    reconRemainderExpense > 0.5 &&
+                    reconShortfall != null &&
+                    reconShortfall > 0.5 ? (
                       <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-sm">
                         <span className="text-muted-foreground">
-                          Phần còn lại (tự động):
+                          Phần thiếu còn lại (tự động — chi):
                         </span>{" "}
                         <span className="font-medium tabular-nums">
-                          {fmt(reconRemainder)} đ
+                          {fmt(reconRemainderExpense)} đ
                         </span>
                         <span className="text-muted-foreground">
                           {" "}
@@ -1344,10 +1421,33 @@ export default function TransactionsPage() {
                         </span>
                       </div>
                     ) : null}
+                    {reconRemainderIncome != null &&
+                    reconRemainderIncome > 0.5 &&
+                    reconSurplus != null &&
+                    reconSurplus > 0.5 ? (
+                      <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground">
+                          Phần thừa còn lại (tự động — thu):
+                        </span>{" "}
+                        <span className="font-medium tabular-nums">
+                          {fmt(reconRemainderIncome)} đ
+                        </span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          — {RECON_UNKNOWN_INCOME_TITLE}
+                        </span>
+                      </div>
+                    ) : null}
                     {reconSumExceedsShortfall ? (
                       <p className="text-sm text-destructive">
-                        Tổng các khoản nhớ được vượt quá phần lệch — giảm số tiền
-                        hoặc xóa bớt dòng.
+                        Tổng các khoản chi nhớ được vượt quá phần thiếu — giảm số
+                        tiền hoặc xóa bớt dòng.
+                      </p>
+                    ) : null}
+                    {reconSumExceedsSurplus ? (
+                      <p className="text-sm text-destructive">
+                        Tổng các khoản thu nhớ được vượt quá phần thừa — giảm số
+                        tiền hoặc xóa bớt dòng.
                       </p>
                     ) : null}
                   </div>
@@ -1370,10 +1470,10 @@ export default function TransactionsPage() {
                   disabled={
                     reconSubmitting ||
                     reconCalculatedRemaining == null ||
-                    reconShortfall == null ||
-                    reconShortfall <= 0 ||
+                    reconActualNum == null ||
+                    !reconHasDiscrepancy ||
                     reconSumExceedsShortfall ||
-                    reconActualNum == null
+                    reconSumExceedsSurplus
                   }
                   onClick={() => void submitReconciliation()}
                 >
