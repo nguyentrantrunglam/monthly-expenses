@@ -39,7 +39,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -88,6 +87,18 @@ const INCOME_CATEGORIES = [
 /** Tiêu đề giao dịch cho phần lệch không nhớ rõ khi đối soát số dư. */
 const RECON_UNKNOWN_EXPENSE_TITLE = "Chi không nhớ rõ (đối soát)";
 const RECON_TRANSACTION_NOTE = "Đối soát số dư ví";
+
+/** Một dòng chi bù trong đối soát — cùng trường với form thêm giao dịch. */
+interface ReconLine {
+  id: string;
+  title: string;
+  amount: string;
+  category: string;
+  type: "expense" | "income";
+  spendingType: "personal" | "shared_pool";
+  date: string;
+  note: string;
+}
 
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n);
@@ -217,9 +228,7 @@ export default function TransactionsPage() {
 
   const [reconOpen, setReconOpen] = useState(false);
   const [reconActualInput, setReconActualInput] = useState("");
-  const [reconLines, setReconLines] = useState<
-    { id: string; title: string; amount: string; category: string }[]
-  >([]);
+  const [reconLines, setReconLines] = useState<ReconLine[]>([]);
   const [reconSubmitting, setReconSubmitting] = useState(false);
   const [reconError, setReconError] = useState<string | null>(null);
 
@@ -561,9 +570,11 @@ export default function TransactionsPage() {
       ? Math.max(0, reconCalculatedRemaining - reconActualNum)
       : null;
 
+  /** Chỉ cộng các khoản chi — dùng để khớp phần lệch so với ví. */
   const reconRememberedSum = useMemo(() => {
     let s = 0;
     for (const line of reconLines) {
+      if (line.type !== "expense") continue;
       const a = parseCurrencyInput(line.amount);
       if (a != null && !Number.isNaN(a) && a > 0) s += a;
     }
@@ -582,14 +593,41 @@ export default function TransactionsPage() {
     scopeView === "shared_pool" ? "shared_pool" : "personal";
 
   const addReconLine = () => {
+    const today = new Date().toISOString().slice(0, 10);
     setReconLines((prev) => [
       ...prev,
-      { id: nanoid(8), title: "", amount: "", category: "Khác" },
+      {
+        id: nanoid(8),
+        title: "",
+        amount: "",
+        category: CATEGORIES[0],
+        type: "expense",
+        spendingType: reconSpendingType,
+        date: today,
+        note: "",
+      },
     ]);
   };
 
   const removeReconLine = (id: string) => {
     setReconLines((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const setReconLineTxType = (id: string, type: "expense" | "income") => {
+    setReconLines((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const category =
+          type === "income"
+            ? INCOME_CATEGORIES.includes(r.category)
+              ? r.category
+              : INCOME_CATEGORIES[0]
+            : CATEGORIES.includes(r.category)
+              ? r.category
+              : CATEGORIES[0];
+        return { ...r, type, category };
+      }),
+    );
   };
 
   const submitReconciliation = async () => {
@@ -617,20 +655,36 @@ export default function TransactionsPage() {
       return;
     }
     const today = new Date().toISOString().slice(0, 10);
-    const linesToPost: { title: string; amount: number; category: string }[] =
-      [];
+    const linesToPost: {
+      title: string;
+      amount: number;
+      category: string;
+      type: "expense" | "income";
+      spendingType: "personal" | "shared_pool";
+      date: string;
+      note: string;
+    }[] = [];
     for (const line of reconLines) {
       const amt = parseCurrencyInput(line.amount);
       if (amt == null || Number.isNaN(amt) || amt <= 0) continue;
       const title = line.title.trim();
       if (!title) {
-        setReconError("Nhập tên gợi nhớ cho mỗi khoản chi đã điền số tiền.");
+        setReconError(
+          "Nhập tên giao dịch cho mỗi dòng đã điền số tiền.",
+        );
         return;
       }
+      const dateStr = (line.date ?? "").trim().slice(0, 10) || today;
       linesToPost.push({
         title,
         amount: amt,
-        category: line.category || "Khác",
+        category:
+          line.category ||
+          (line.type === "income" ? INCOME_CATEGORIES[0] : "Khác"),
+        type: line.type,
+        spendingType: line.spendingType,
+        date: dateStr,
+        note: line.note.trim(),
       });
     }
     if (reconRemainder != null && reconRemainder > 0) {
@@ -638,6 +692,10 @@ export default function TransactionsPage() {
         title: RECON_UNKNOWN_EXPENSE_TITLE,
         amount: reconRemainder,
         category: "Khác",
+        type: "expense",
+        spendingType: reconSpendingType,
+        date: today,
+        note: RECON_TRANSACTION_NOTE,
       });
     }
     if (linesToPost.length === 0) {
@@ -650,11 +708,11 @@ export default function TransactionsPage() {
         await addTransaction({
           title: row.title,
           amount: row.amount,
-          type: "expense",
+          type: row.type,
           category: row.category,
-          spendingType: reconSpendingType,
-          note: RECON_TRANSACTION_NOTE,
-          date: today,
+          spendingType: row.spendingType,
+          note: row.note,
+          date: row.date,
         });
       }
       setReconOpen(false);
@@ -966,8 +1024,8 @@ export default function TransactionsPage() {
               }
             }}
           >
-            <DialogContent className="max-h-[min(90dvh,720px)] overflow-y-auto sm:max-w-lg">
-              <DialogHeader>
+            <DialogContent className="flex max-h-[min(90dvh,720px)] min-h-0 flex-col gap-0 overflow-hidden p-6 sm:max-w-lg">
+              <DialogHeader className="shrink-0 pr-6">
                 <DialogTitle>Đối soát số dư ví</DialogTitle>
                 <DialogDescription>
                   Nhập <strong>số dư thực tế</strong> trong ví và so với{" "}
@@ -977,7 +1035,8 @@ export default function TransactionsPage() {
                   là chi không nhớ rõ.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 pt-1">
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1 pt-1">
+              <div className="space-y-4">
                 {reconCalculatedRemaining == null ? (
                   <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
                     Chưa có số còn lại để so: cần{" "}
@@ -1054,93 +1113,210 @@ export default function TransactionsPage() {
                 {reconShortfall != null && reconShortfall > 0 ? (
                   <div className="space-y-3">
                     <p className="text-[11px] text-muted-foreground">
-                      Các giao dịch điều chỉnh sẽ ghi vào{" "}
-                      <strong>
-                        {reconSpendingType === "shared_pool"
-                          ? "quỹ chung"
-                          : "quỹ cá nhân của bạn"}
-                      </strong>{" "}
-                      (theo tab quỹ đang chọn).
+                      Mỗi dòng điền như thêm giao dịch (loại, quỹ, ngày, ghi chú…).
+                      Tổng các khoản <strong>chi</strong> nhớ được không vượt quá
+                      phần lệch; khoản <strong>thu</strong> vẫn được ghi nhưng
+                      không tính vào tổng bù lệch.
                     </p>
                     <div>
                       <p className="text-sm font-medium">
                         Chi bù — các khoản bạn nhớ
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Thêm từng khoản (tên + số tiền). Phần chênh lệch chưa gán
-                        sẽ ghi là &quot;{RECON_UNKNOWN_EXPENSE_TITLE}&quot;.
+                        Phần chênh lệch chưa gán sẽ ghi tự động là &quot;
+                        {RECON_UNKNOWN_EXPENSE_TITLE}&quot;.
                       </p>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {reconLines.map((line) => (
                         <div
                           key={line.id}
-                          className="flex flex-wrap items-end gap-2 rounded-lg border p-2"
+                          className="relative rounded-lg border bg-muted/20 p-3 sm:p-4"
                         >
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <Label className="text-[11px]">Tên khoản</Label>
-                            <Input
-                              value={line.title}
-                              onChange={(e) =>
-                                setReconLines((prev) =>
-                                  prev.map((r) =>
-                                    r.id === line.id
-                                      ? { ...r, title: e.target.value }
-                                      : r
-                                  )
-                                )
-                              }
-                              placeholder="Ví dụ: Cà phê, xăng…"
-                            />
-                          </div>
-                          <div className="w-28 space-y-1">
-                            <Label className="text-[11px]">Số tiền</Label>
-                            <CurrencyInput
-                              value={line.amount}
-                              onChange={(v) =>
-                                setReconLines((prev) =>
-                                  prev.map((r) =>
-                                    r.id === line.id ? { ...r, amount: v } : r
-                                  )
-                                )
-                              }
-                              className="font-mono text-sm"
-                            />
-                          </div>
-                          <div className="w-36 space-y-1">
-                            <Label className="text-[11px]">Danh mục</Label>
-                            <Select
-                              value={line.category}
-                              onValueChange={(v) =>
-                                setReconLines((prev) =>
-                                  prev.map((r) =>
-                                    r.id === line.id ? { ...r, category: v } : r
-                                  )
-                                )
-                              }
-                            >
-                              <SelectTrigger className="h-9 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {CATEGORIES.map((c) => (
-                                  <SelectItem key={c} value={c}>
-                                    {c}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="shrink-0"
+                            className="absolute right-1 top-1 h-8 w-8 shrink-0 text-muted-foreground"
                             onClick={() => removeReconLine(line.id)}
                             aria-label="Xóa dòng"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
+                          <div className="grid gap-3 pr-8 sm:grid-cols-2">
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <Label className="text-[11px]">Loại giao dịch</Label>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    line.type === "expense"
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                  }`}
+                                  onClick={() =>
+                                    setReconLineTxType(line.id, "expense")
+                                  }
+                                >
+                                  Chi tiêu
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    line.type === "income"
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                  }`}
+                                  onClick={() =>
+                                    setReconLineTxType(line.id, "income")
+                                  }
+                                >
+                                  Thu nhập
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <Label className="text-[11px]">
+                                {line.type === "income"
+                                  ? "Thuộc về (quỹ nào)"
+                                  : "Nguồn chi"}
+                              </Label>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    line.spendingType === "personal"
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                  }`}
+                                  onClick={() =>
+                                    setReconLines((prev) =>
+                                      prev.map((r) =>
+                                        r.id === line.id
+                                          ? { ...r, spendingType: "personal" }
+                                          : r
+                                      )
+                                    )
+                                  }
+                                >
+                                  Cá nhân
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    line.spendingType === "shared_pool"
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                  }`}
+                                  onClick={() =>
+                                    setReconLines((prev) =>
+                                      prev.map((r) =>
+                                        r.id === line.id
+                                          ? {
+                                              ...r,
+                                              spendingType: "shared_pool",
+                                            }
+                                          : r
+                                      )
+                                    )
+                                  }
+                                >
+                                  Quỹ chung
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <Label className="text-[11px]">Tên giao dịch</Label>
+                              <Input
+                                value={line.title}
+                                onChange={(e) =>
+                                  setReconLines((prev) =>
+                                    prev.map((r) =>
+                                      r.id === line.id
+                                        ? { ...r, title: e.target.value }
+                                        : r
+                                    )
+                                  )
+                                }
+                                placeholder="Ví dụ: Cà phê, xăng…"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-[11px]">Số tiền (VND)</Label>
+                              <CurrencyInput
+                                value={line.amount}
+                                onChange={(v) =>
+                                  setReconLines((prev) =>
+                                    prev.map((r) =>
+                                      r.id === line.id
+                                        ? { ...r, amount: v }
+                                        : r
+                                    )
+                                  )
+                                }
+                                placeholder="100,000"
+                                className="font-mono text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-[11px]">Danh mục</Label>
+                              <Select
+                                value={line.category}
+                                onValueChange={(v) =>
+                                  setReconLines((prev) =>
+                                    prev.map((r) =>
+                                      r.id === line.id
+                                        ? { ...r, category: v }
+                                        : r
+                                    )
+                                  )
+                                }
+                              >
+                                <SelectTrigger className="h-9 w-full text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(line.type === "income"
+                                    ? INCOME_CATEGORIES
+                                    : CATEGORIES
+                                  ).map((c) => (
+                                    <SelectItem key={c} value={c}>
+                                      {c}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <Label className="text-[11px]">Ngày</Label>
+                              <DatePicker
+                                value={line.date}
+                                onChange={(v) =>
+                                  setReconLines((prev) =>
+                                    prev.map((r) =>
+                                      r.id === line.id ? { ...r, date: v } : r
+                                    )
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="space-y-1.5 sm:col-span-2">
+                              <Label className="text-[11px]">Ghi chú</Label>
+                              <Input
+                                value={line.note}
+                                onChange={(e) =>
+                                  setReconLines((prev) =>
+                                    prev.map((r) =>
+                                      r.id === line.id
+                                        ? { ...r, note: e.target.value }
+                                        : r
+                                    )
+                                  )
+                                }
+                                placeholder="Tùy chọn"
+                              />
+                            </div>
+                          </div>
                         </div>
                       ))}
                       <Button
@@ -1180,7 +1356,8 @@ export default function TransactionsPage() {
                   <p className="text-sm text-destructive">{reconError}</p>
                 ) : null}
               </div>
-              <DialogFooter className="gap-2 sm:gap-0">
+              </div>
+              <div className="mt-3 flex shrink-0 justify-end gap-2 border-t pt-4">
                 <Button
                   type="button"
                   variant="outline"
@@ -1205,7 +1382,7 @@ export default function TransactionsPage() {
                   ) : null}
                   Ghi các khoản bù
                 </Button>
-              </DialogFooter>
+              </div>
             </DialogContent>
           </Dialog>
           <Button
