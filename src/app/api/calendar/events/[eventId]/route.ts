@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCalendarClient } from "@/lib/google-calendar";
 import {
+  calendarRouteErrorResponse,
+  createPersistTokensHandler,
+} from "@/lib/calendar-route-helpers";
+import {
   buildGoogleCalendarSchedule,
   toGoogleEventDateTime,
 } from "@/lib/google-calendar-build-schedule";
@@ -75,7 +79,9 @@ export async function PATCH(
     }
 
     const sched = buildGoogleCalendarSchedule(start, end);
-    const calendar = createCalendarClient(tokens);
+    const calendar = createCalendarClient(tokens, {
+      onTokensRefreshed: createPersistTokensHandler(familyId),
+    });
 
     const existing = await calendar.events.get({
       calendarId: "primary",
@@ -119,10 +125,9 @@ export async function PATCH(
 
     return NextResponse.json(res.data);
   } catch (err) {
-    console.error(err);
-    return NextResponse.json(
-      { error: "Không thể cập nhật sự kiện" },
-      { status: 500 }
-    );
+    return calendarRouteErrorResponse(err, {
+      fallbackMessage: "Không thể cập nhật sự kiện",
+      logLabel: "PATCH /api/calendar/events/[eventId]",
+    });
   }
 }

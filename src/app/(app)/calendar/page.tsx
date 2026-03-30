@@ -25,6 +25,7 @@ import {
   useConnectGoogleCalendar,
   useCreateCalendarEvent,
   useUpdateCalendarEvent,
+  calendarNeedsGoogleReconnect,
   type CalendarEvent,
 } from "@/hooks/useGoogleCalendar";
 import { Card } from "@/components/ui/card";
@@ -253,13 +254,6 @@ export default function CalendarPage() {
     status?.isOwner ?? (!!family && family.createdBy === user?.uid);
   const familyId = status?.familyId ?? user?.familyId ?? null;
 
-  useEffect(() => {
-    if (searchParams.get("connected") === "1") {
-      refetchStatus();
-      window.history.replaceState({}, "", "/calendar");
-    }
-  }, [searchParams, refetchStatus]);
-
   const { timeMin, timeMax } = useMemo(() => {
     const start = startOfMonth(currentDate);
     const end = endOfMonth(currentDate);
@@ -269,11 +263,24 @@ export default function CalendarPage() {
     };
   }, [currentDate]);
 
-  const { data: eventsData, isLoading: eventsLoading } = useCalendarEvents(
-    timeMin,
-    timeMax
-  );
+  const {
+    data: eventsData,
+    isLoading: eventsLoading,
+    error: eventsError,
+    isError: eventsQueryError,
+    refetch: refetchEvents,
+  } = useCalendarEvents(timeMin, timeMax);
   const events = eventsData?.items ?? [];
+  const showGoogleReconnectBanner =
+    connected && eventsQueryError && calendarNeedsGoogleReconnect(eventsError);
+
+  useEffect(() => {
+    if (searchParams.get("connected") === "1") {
+      void refetchStatus();
+      void refetchEvents();
+      window.history.replaceState({}, "", "/calendar");
+    }
+  }, [searchParams, refetchStatus, refetchEvents]);
 
   const eventsByDate = useMemo(() => {
     const map: Record<string, { ev: CalendarEvent; isFirst: boolean; isLast: boolean }[]> = {};
@@ -480,6 +487,57 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-4">
+      {showGoogleReconnectBanner ? (
+        <Card className="border-amber-500/45 bg-amber-500/10 p-4 dark:bg-amber-950/25">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1 min-w-0">
+              <p className="text-sm font-medium text-amber-950 dark:text-amber-50">
+                Cần kết nối lại Google Calendar
+              </p>
+              <p className="text-xs text-amber-900/90 dark:text-amber-100/85 leading-relaxed">
+                {isOwner
+                  ? "Phiên đồng bộ với Google đã hết hạn hoặc bị thu hồi. Nhấn «Kết nối lại» để cấp quyền và tiếp tục xem lịch."
+                  : "Phiên Google Calendar của gia đình không còn hợp lệ. Nhờ chủ gia đình mở trang Lịch và nhấn «Kết nối lại Google Calendar»."}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {isOwner && familyId ? (
+                <Button
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => connect(familyId)}
+                  disabled={connecting}
+                >
+                  <Link2 className="h-4 w-4" />
+                  {connecting ? "Đang mở Google…" : "Kết nối lại"}
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-800/30 bg-background/80 dark:border-amber-200/25"
+                onClick={() => void refetchEvents()}
+              >
+                Thử tải lại
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+      {eventsQueryError && !showGoogleReconnectBanner ? (
+        <Card className="border-destructive/35 bg-destructive/5 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-destructive">
+              {eventsError instanceof Error
+                ? eventsError.message
+                : "Không tải được lịch."}
+            </p>
+            <Button size="sm" variant="outline" onClick={() => void refetchEvents()}>
+              Thử lại
+            </Button>
+          </div>
+        </Card>
+      ) : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Lịch gia đình</h1>

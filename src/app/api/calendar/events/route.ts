@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as admin from "firebase-admin";
 import { createCalendarClient } from "@/lib/google-calendar";
+import {
+  calendarRouteErrorResponse,
+  createPersistTokensHandler,
+} from "@/lib/calendar-route-helpers";
 import { buildGoogleCalendarSchedule } from "@/lib/google-calendar-build-schedule";
 import { verifyIdToken, getFirebaseAdmin } from "@/lib/firebase/admin";
 import { getFirestore } from "firebase-admin/firestore";
@@ -93,7 +97,9 @@ export async function GET(req: NextRequest) {
     const timeMax = searchParams.get("timeMax");
     const maxResults = parseInt(searchParams.get("maxResults") ?? "100", 10);
 
-    const calendar = createCalendarClient(tokens);
+    const calendar = createCalendarClient(tokens, {
+      onTokensRefreshed: createPersistTokensHandler(familyId),
+    });
     const listParams = {
       timeMin: timeMin ?? undefined,
       timeMax: timeMax ?? undefined,
@@ -128,11 +134,7 @@ export async function GET(req: NextRequest) {
       nextPageToken: primaryRes.data.nextPageToken,
     });
   } catch (err) {
-    console.error(err);
-    return NextResponse.json(
-      { error: "Không thể tải sự kiện" },
-      { status: 500 }
-    );
+    return calendarRouteErrorResponse(err);
   }
 }
 
@@ -182,7 +184,9 @@ export async function POST(req: NextRequest) {
 
     const attendeeEmails = await getFamilyMemberAttendeeEmails(familyId);
 
-    const calendar = createCalendarClient(tokens);
+    const calendar = createCalendarClient(tokens, {
+      onTokensRefreshed: createPersistTokensHandler(familyId),
+    });
     const event: {
       summary: string;
       description?: string;
@@ -215,10 +219,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(res.data);
   } catch (err) {
-    console.error(err);
-    return NextResponse.json(
-      { error: "Không thể tạo sự kiện" },
-      { status: 500 }
-    );
+    return calendarRouteErrorResponse(err, {
+      fallbackMessage: "Không thể tạo sự kiện",
+      logLabel: "POST /api/calendar/events",
+    });
   }
 }

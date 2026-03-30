@@ -30,6 +30,38 @@ export interface CalendarEventsResponse {
   nextPageToken?: string;
 }
 
+/** Lỗi API calendar — có `code` từ server (vd. GOOGLE_OAUTH_INVALID). */
+export class CalendarApiError extends Error {
+  readonly code?: string;
+  readonly httpStatus: number;
+
+  constructor(message: string, httpStatus: number, code?: string) {
+    super(message);
+    this.name = "CalendarApiError";
+    this.httpStatus = httpStatus;
+    this.code = code;
+  }
+}
+
+function isGoogleReconnectErrorCode(code?: string): boolean {
+  return (
+    code === "GOOGLE_CALENDAR_AUTH" || code === "GOOGLE_OAUTH_INVALID"
+  );
+}
+
+/** Cần chủ gia đình kết nối lại Google (token OAuth hết hạn / thu hồi). */
+export function calendarNeedsGoogleReconnect(err: unknown): boolean {
+  if (err instanceof CalendarApiError && isGoogleReconnectErrorCode(err.code)) {
+    return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    /Google Calendar từ chối|kết nối lại trong trang Lịch|Phiên Google Calendar|invalid_grant/i.test(
+      msg,
+    )
+  );
+}
+
 async function getIdToken() {
   const auth = getFirebaseAuth();
   const user = auth.currentUser;
@@ -37,19 +69,69 @@ async function getIdToken() {
   return user.getIdToken();
 }
 
+/** Gọi API calendar với Bearer; 401 do token Firebase cũ → làm mới và gửi lại 1 lần. */
 async function fetchWithAuth(url: string, options?: RequestInit) {
-  const token = await getIdToken();
-  if (!token) throw new Error("Chưa đăng nhập");
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      ...options?.headers,
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const auth = getFirebaseAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("Chưa đăng nhập");
+
+  const request = (idToken: string) =>
+    fetch(url, {
+      ...options,
+      headers: {
+        ...options?.headers,
+        Authorization: `Bearer ${idToken}`,
+      },
+    });
+
+  let token = await user.getIdToken();
+  let res = await request(token);
+
+  if (res.status === 401) {
+    const err = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      code?: string;
+    };
+    const msg = err.error ?? "";
+    const firebaseAuthIssue =
+      err.code === "auth/id-token-expired" ||
+      err.code === "auth/argument-error" ||
+      err.code === "auth/id-token-revoked" ||
+      (msg.includes("Phiên đăng nhập") && msg.includes("hết hạn"));
+
+    if (firebaseAuthIssue) {
+      token = await user.getIdToken(true);
+      res = await request(token);
+      if (!res.ok) {
+        const err2 = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          code?: string;
+        };
+        throw new CalendarApiError(
+          err2.error ?? res.statusText,
+          res.status,
+          err2.code,
+        );
+      }
+      return res.json();
+    }
+    throw new CalendarApiError(
+      err.error ?? "Không được phép truy cập",
+      401,
+      err.code,
+    );
+  }
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? res.statusText);
+    const err = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      code?: string;
+    };
+    throw new CalendarApiError(
+      err.error ?? res.statusText,
+      res.status,
+      err.code,
+    );
   }
   return res.json();
 }
