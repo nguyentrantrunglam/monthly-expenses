@@ -1,9 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ReactNode, UIEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { useThemeStore } from "@/hooks/useTheme";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -34,9 +34,12 @@ import {
   ChevronsUpDown,
   ChevronDown,
   ChevronRight,
+  ArrowUp,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { NotificationBell } from "@/components/NotificationBell";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface NavItem {
   href: string;
@@ -159,12 +162,16 @@ function groupContainsPath(group: NavGroup, pathname: string): boolean {
   return false;
 }
 
+const SCROLL_TOP_BUTTON_THRESHOLD = 320;
+
 export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const authLoading = useAuthStore((s) => s.loading);
   const { theme, setTheme } = useThemeStore();
+  const mainRef = useRef<HTMLElement>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
@@ -189,6 +196,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       }
       return changed ? next : prev;
     });
+  }, [pathname]);
+
+  useEffect(() => {
+    const el = mainRef.current;
+    if (el) {
+      setShowScrollTop(el.scrollTop > SCROLL_TOP_BUTTON_THRESHOLD);
+    }
   }, [pathname]);
 
   useEffect(() => {
@@ -228,6 +242,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const isDark = theme === "dark";
   const handleThemeToggle = (checked: boolean) => {
     setTheme(checked ? "dark" : "light");
+  };
+
+  const handleMainScroll = (e: UIEvent<HTMLElement>) => {
+    setShowScrollTop(e.currentTarget.scrollTop > SCROLL_TOP_BUTTON_THRESHOLD);
+  };
+
+  const scrollMainToTop = () => {
+    mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
@@ -421,11 +443,31 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main content — min-h-0 để trang con (chat) có thể flex + scroll nội bộ */}
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <main
+        ref={mainRef}
+        onScroll={handleMainScroll}
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+      >
         <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-4 py-6 md:px-8 md:py-8">
           {children}
         </div>
       </main>
+
+      <Button
+        type="button"
+        variant="default"
+        size="icon"
+        aria-label="Lên đầu trang"
+        onClick={scrollMainToTop}
+        className={cn(
+          "fixed bottom-20 right-4 z-50 size-11 rounded-full shadow-md transition-[opacity,transform] duration-200 md:right-8",
+          showScrollTop
+            ? "pointer-events-auto translate-y-0 opacity-100"
+            : "pointer-events-none translate-y-2 opacity-0"
+        )}
+      >
+        <ArrowUp className="size-5" aria-hidden />
+      </Button>
     </div>
   );
 }
