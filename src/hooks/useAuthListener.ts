@@ -43,6 +43,17 @@ export function useAuthListener() {
         };
 
         setUser(mapped);
+      } catch (e) {
+        // Firestore denied (rules) or offline: still expose Auth user so UI không kẹt "chưa đăng nhập".
+        console.error("useAuthListener: không đọc được users doc", e);
+        setUser({
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName,
+          photoURL: firebaseUser.photoURL,
+          familyId: null,
+          role: null,
+        });
       } finally {
         setLoading(false);
       }

@@ -39,6 +39,8 @@ interface Props {
   allMemberItems: Record<string, MemberItems>;
   memberNames: Record<string, string>;
   isOwner: boolean;
+  /** ID khoản cố định (Firestore) — thẻ khớp ID này không được xóa khỏi kho cá nhân */
+  fixedCatalogItemIds: ReadonlySet<string>;
 }
 
 type ColumnId = "personal" | "income" | "expense" | "trash";
@@ -57,6 +59,7 @@ export function SessionBoard({
   allMemberItems,
   memberNames,
   isOwner,
+  fixedCatalogItemIds,
 }: Props) {
   const [items, setItems] = useState<MemberSessionItem[]>(initialItems);
 
@@ -84,14 +87,19 @@ export function SessionBoard({
       const item = items[idx];
       if (!item) return;
 
-      // Kéo vào vùng xóa: chỉ cho phép xóa các thẻ quick được tạo trong session
+      // Kéo vào vùng xóa: không cho xóa thẻ bắt nguồn từ khoản cố định cá nhân
       if (targetColumn === "trash") {
-        if (item.fixedItemId?.startsWith("_quick_")) {
+        const fromFixed =
+          item.fixedItemId != null &&
+          fixedCatalogItemIds.has(item.fixedItemId);
+        if (!fromFixed) {
           const next = items.filter((_, i) => i !== idx);
           setItems(next);
           onItemsChange(next);
         } else {
-          toast.warning("Chỉ xóa được các khoản tạo tạm trong session này.");
+          toast.warning(
+            "Không xóa được khoản từ khoản cố định. Tắt hoặc xóa trong Cài đặt → Khoản cố định.",
+          );
         }
         return;
       }
@@ -124,7 +132,7 @@ export function SessionBoard({
       setItems(next);
       onItemsChange(next);
     },
-    [items, disabled, onItemsChange],
+    [items, disabled, onItemsChange, fixedCatalogItemIds],
   );
 
   const handleAmountChange = useCallback(
@@ -187,13 +195,23 @@ export function SessionBoard({
     setShowAdd(false);
   };
 
-  const handleDeleteQuickItem = useCallback(
+  const handleDeletePersonalItem = useCallback(
     (index: number) => {
+      const row = items[index];
+      if (
+        row?.fixedItemId != null &&
+        fixedCatalogItemIds.has(row.fixedItemId)
+      ) {
+        toast.warning(
+          "Không xóa được khoản từ khoản cố định. Tắt hoặc xóa trong Cài đặt → Khoản cố định.",
+        );
+        return;
+      }
       const next = items.filter((_, i) => i !== index);
       setItems(next);
       onItemsChange(next);
     },
-    [items, onItemsChange],
+    [items, onItemsChange, fixedCatalogItemIds],
   );
 
   const closeAddForm = () => {
@@ -235,8 +253,9 @@ export function SessionBoard({
                   onAmountChange={handleAmountChange}
                   disabled={disabled}
                   onDelete={
-                    item.fixedItemId?.startsWith("_quick_")
-                      ? handleDeleteQuickItem
+                    item.fixedItemId == null ||
+                    !fixedCatalogItemIds.has(item.fixedItemId)
+                      ? handleDeletePersonalItem
                       : undefined
                   }
                 />

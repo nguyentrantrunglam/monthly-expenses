@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   collection,
@@ -37,6 +37,8 @@ export default function AllocationPage() {
   const [saving, setSaving] = useState(false);
   const [savingsInput, setSavingsInput] = useState(0);
   const [savingsTouched, setSavingsTouched] = useState(false);
+  /** Tránh race: snapshot allocation có thể đến sau lần seed trống — cần biết bản FS nào đã áp vào UI. */
+  const appliedFirestoreSigRef = useRef<string | null>(null);
 
   const [sessionMonth, setSessionMonth] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<
@@ -74,6 +76,14 @@ export default function AllocationPage() {
     return () => unsub();
   }, [user?.familyId, sessionMonth]);
 
+  useEffect(() => {
+    appliedFirestoreSigRef.current = null;
+    setItems([]);
+    setSeeded(false);
+    setSavingsTouched(false);
+    setSavingsInput(0);
+  }, [sessionId]);
+
   const cycleDay = family?.cycleDay ?? 1;
 
   const sessionRange = useMemo(() => {
@@ -107,36 +117,67 @@ export default function AllocationPage() {
     return Object.values(memberSpending).reduce((s, v) => s + v.shared, 0);
   }, [memberSpending]);
 
-  // Seed from allocation or create fresh list
+  function mergeNewMembersIntoSaved(
+    saved: AllocationItem[],
+    memberIds: string[],
+    memberNames: Record<string, string | undefined>
+  ): AllocationItem[] {
+    const existingUserIds = new Set(
+      saved.filter((i) => i.type === "personal").map((i) => i.userId)
+    );
+    const next = [...saved];
+    for (const uid of memberIds) {
+      if (!existingUserIds.has(uid)) {
+        const sharedIdx = next.findIndex((i) => i.type === "shared_pool");
+        next.splice(sharedIdx >= 0 ? sharedIdx : next.length, 0, {
+          type: "personal",
+          userId: uid,
+          label: memberNames[uid] || "Thành viên",
+          amount: 0,
+        });
+      }
+    }
+    return next;
+  }
+
+  function allocationFirestoreSig(a: NonNullable<typeof allocation>) {
+    return JSON.stringify({
+      items: a.items,
+      savings: a.savingsAmount ?? 0,
+    });
+  }
+
+  // Seed from Firestore hoặc tạo mới; nếu FS đến muộn sau lần seed trống thì vẫn áp dữ liệu đã lưu.
   useEffect(() => {
     if (loading || !family || !user) return;
 
     const memberIds = Object.keys(family.members);
+    const memberNames: Record<string, string | undefined> = {};
+    for (const uid of memberIds) {
+      memberNames[uid] = family.members[uid]?.name ?? undefined;
+    }
+    const hasSaved =
+      allocation != null &&
+      Array.isArray(allocation.items) &&
+      allocation.items.length > 0;
+    const fsSig = hasSaved ? allocationFirestoreSig(allocation) : null;
 
-    if (allocation && allocation.items.length > 0 && !seeded) {
-      // Start from saved allocation, then merge any new members
-      const saved = [...allocation.items];
-      const existingUserIds = new Set(
-        saved.filter((i) => i.type === "personal").map((i) => i.userId)
+    if (fsSig != null && fsSig !== appliedFirestoreSigRef.current) {
+      appliedFirestoreSigRef.current = fsSig;
+      const saved = mergeNewMembersIntoSaved(
+        [...allocation!.items],
+        memberIds,
+        memberNames
       );
-      for (const uid of memberIds) {
-        if (!existingUserIds.has(uid)) {
-          const sharedIdx = saved.findIndex((i) => i.type === "shared_pool");
-          saved.splice(sharedIdx >= 0 ? sharedIdx : saved.length, 0, {
-            type: "personal",
-            userId: uid,
-            label: family.members[uid]?.name || "Thành viên",
-            amount: 0,
-          });
-        }
-      }
       setItems(saved);
-      setSavingsInput(allocation.savingsAmount ?? 0);
+      setSavingsInput(allocation!.savingsAmount ?? 0);
+      // Bắt buộc dùng savingsInput đã lưu; nếu để touched=false thì UI lại hiện suggestedSavings và che số đã xác nhận.
+      setSavingsTouched(true);
       setSeeded(true);
       return;
     }
 
-    if (!seeded) {
+    if (!seeded && !hasSaved) {
       const initial: AllocationItem[] = memberIds.map((uid) => ({
         type: "personal" as const,
         userId: uid,

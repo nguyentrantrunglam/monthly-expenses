@@ -31,6 +31,8 @@ export interface FixedItem {
   isActive: boolean;
   /** Có phải khoản trả góp không */
   isInstallment?: boolean;
+  /** Ngày kết thúc trả góp (YYYY-MM-DD); sau tháng chứa ngày này không gộp vào session mới */
+  installmentEndDate?: string | null;
 }
 
 export interface FixedItemCategoryMeta {
@@ -87,6 +89,10 @@ export function useFixedItems() {
             tag: data.tag ?? "personal",
             isActive: data.isActive ?? true,
             isInstallment: data.isInstallment ?? false,
+            installmentEndDate:
+              typeof data.installmentEndDate === "string"
+                ? data.installmentEndDate
+                : null,
           });
         });
         setItems(next);
@@ -129,6 +135,7 @@ export function useFixedItems() {
     categoryName: string | null;
     dayOfMonth: number | null;
     isInstallment?: boolean;
+    installmentEndDate?: string | null;
   }) => {
     if (!user?.familyId || !user.uid) {
       throw new Error("Chưa có gia đình hoặc user.");
@@ -151,6 +158,10 @@ export function useFixedItems() {
       tag: "personal",
       isActive: true,
       isInstallment: input.isInstallment ?? false,
+      installmentEndDate:
+        input.isInstallment && input.installmentEndDate?.trim()
+          ? input.installmentEndDate.trim()
+          : null,
       createdAt: new Date(),
     });
   };

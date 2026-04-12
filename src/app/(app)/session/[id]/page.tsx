@@ -23,7 +23,10 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase/client";
-import { getFixedItemDisplayTitle } from "@/lib/utils";
+import {
+  fixedItemAppliesToSessionMonth,
+  getFixedItemDisplayTitle,
+} from "@/lib/utils";
 import { exportSessionPdf } from "@/lib/exportSessionPdf";
 import { Wallet, Scale, FileDown } from "lucide-react";
 
@@ -46,6 +49,10 @@ export default function SessionDetailPage() {
     confirmMemberItems,
   } = useSessionDetail(sessionId);
   const { items: fixedItems } = useFixedItems();
+  const fixedCatalogItemIds = useMemo(
+    () => new Set(fixedItems.map((f) => f.id)),
+    [fixedItems],
+  );
 
   const isOwner =
     family && user
@@ -148,7 +155,12 @@ export default function SessionDetailPage() {
     const existingIds = new Set(savedItems.map((i) => i.fixedItemId));
 
     const newFromFixed: MemberSessionItem[] = fixedItems
-      .filter((fi) => fi.isActive && !existingIds.has(fi.id))
+      .filter(
+        (fi) =>
+          fi.isActive &&
+          !existingIds.has(fi.id) &&
+          fixedItemAppliesToSessionMonth(fi, session.month)
+      )
       .map((fi) => ({
         fixedItemId: fi.id,
         title: getFixedItemDisplayTitle(fi),
@@ -399,6 +411,7 @@ export default function SessionDetailPage() {
         allMemberItems={allMemberItems}
         memberNames={memberNames}
         isOwner={isOwner}
+        fixedCatalogItemIds={fixedCatalogItemIds}
       />
 
       {isLocked && isOwner && (

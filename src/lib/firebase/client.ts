@@ -13,12 +13,29 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
+let warnedMissingConfig = false;
+
+function warnIfFirebaseEnvIncomplete() {
+  if (warnedMissingConfig || typeof window === "undefined") return;
+  const missing =
+    !firebaseConfig.apiKey ||
+    !firebaseConfig.projectId ||
+    !firebaseConfig.appId;
+  if (missing) {
+    warnedMissingConfig = true;
+    console.error(
+      "[Firebase] Thiếu NEXT_PUBLIC_FIREBASE_* trên môi trường deploy. Thêm đủ biến trong Vercel/hosting, redeploy.",
+    );
+  }
+}
+
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
 let db: Firestore | undefined;
 let storage: FirebaseStorage | undefined;
 
 export function getFirebaseApp(): FirebaseApp {
+  warnIfFirebaseEnvIncomplete();
   if (!app) {
     if (!getApps().length) {
       app = initializeApp(firebaseConfig);

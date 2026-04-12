@@ -100,10 +100,7 @@ export function ItemCard({
           >
             {fmt(item.amount)} đ
           </span>
-          {onDelete &&
-            item.column === "personal" &&
-            item.fixedItemId?.startsWith("_quick_") &&
-            !disabled && (
+          {onDelete && item.column === "personal" && !disabled && (
               <button
                 type="button"
                 className="ml-0.5 rounded p-0.5 text-[10px] text-muted-foreground hover:text-destructive hover:bg-red-50 dark:hover:bg-red-950"
@@ -111,7 +108,7 @@ export function ItemCard({
                   e.stopPropagation();
                   onDelete(index);
                 }}
-                aria-label="Xóa khoản tạm thời này"
+                aria-label="Xóa khỏi kho cá nhân"
               >
                 <X className="h-3 w-3" />
               </button>

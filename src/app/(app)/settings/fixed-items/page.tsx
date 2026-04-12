@@ -44,7 +44,16 @@ import {
 } from "@/components/ui/dialog";
 import { getFixedItemDisplayTitle, parseCurrencyInput } from "@/lib/utils";
 import { CurrencyInput } from "@/components/ui/currency-input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Plus } from "lucide-react";
+
+function formatInstallmentEndDateVi(iso: string | null | undefined): string {
+  if (!iso?.trim()) return "—";
+  const s = iso.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const [y, m, d] = s.split("-");
+  return `${d}/${m}/${y}`;
+}
 
 const DEFAULT_SOURCE_OPTIONS = [
   "SC",
@@ -75,6 +84,7 @@ export default function FixedItemsSettingsPage() {
   const [categoryName, setCategoryName] = useState<string>("");
   const [dayOfMonth, setDayOfMonth] = useState<string>("");
   const [isInstallment, setIsInstallment] = useState(false);
+  const [installmentEndDate, setInstallmentEndDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -89,6 +99,7 @@ export default function FixedItemsSettingsPage() {
   const [editCategoryName, setEditCategoryName] = useState<string>("");
   const [editDay, setEditDay] = useState("");
   const [editIsInstallment, setEditIsInstallment] = useState(false);
+  const [editInstallmentEndDate, setEditInstallmentEndDate] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
   const categoryOptions = useMemo(() => {
@@ -120,12 +131,19 @@ export default function FixedItemsSettingsPage() {
         categoryName: categoryName.trim() || null,
         dayOfMonth: parsedDay,
         isInstallment: addFormCategory === "expense" ? isInstallment : false,
+        installmentEndDate:
+          addFormCategory === "expense" &&
+          isInstallment &&
+          installmentEndDate.trim()
+            ? installmentEndDate.trim()
+            : null,
       });
       setTitle("");
       setAmount("");
       setCategoryName("");
       setDayOfMonth("");
       setIsInstallment(false);
+      setInstallmentEndDate("");
       setShowAddModal(false);
     } catch (err) {
       console.error(err);
@@ -144,6 +162,7 @@ export default function FixedItemsSettingsPage() {
     setEditCategoryName(item.categoryName ?? "");
     setEditDay(item.dayOfMonth ? String(item.dayOfMonth) : "");
     setEditIsInstallment(item.isInstallment ?? false);
+    setEditInstallmentEndDate(item.installmentEndDate?.trim() ?? "");
   };
 
   const cancelEdit = () => {
@@ -166,6 +185,12 @@ export default function FixedItemsSettingsPage() {
         categoryName: editCategoryName.trim() || null,
         dayOfMonth: parsedDay,
         isInstallment: editCategory === "expense" ? editIsInstallment : false,
+        installmentEndDate:
+          editCategory === "expense" &&
+          editIsInstallment &&
+          editInstallmentEndDate.trim()
+            ? editInstallmentEndDate.trim()
+            : null,
       });
       setEditingId(null);
     } catch (err) {
@@ -215,6 +240,7 @@ export default function FixedItemsSettingsPage() {
                       onClick={() => {
                         setAddFormCategory("income");
                         setIsInstallment(false);
+                        setInstallmentEndDate("");
                       }}
                       className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
                         addFormCategory === "income"
@@ -298,16 +324,47 @@ export default function FixedItemsSettingsPage() {
                       />
                     </div>
                     {addFormCategory === "expense" && (
-                      <div className="space-y-1.5 flex items-center gap-3">
+                      <div className="space-y-1.5 flex items-center gap-3 sm:col-span-2">
                         <Label htmlFor="modal-is-installment" className="cursor-pointer">
                           Trả góp
                         </Label>
                         <Switch
                           id="modal-is-installment"
                           checked={isInstallment}
-                          onCheckedChange={setIsInstallment}
+                          onCheckedChange={(v) => {
+                            setIsInstallment(v);
+                            if (!v) setInstallmentEndDate("");
+                          }}
                           aria-label="Có phải khoản trả góp không"
                         />
+                      </div>
+                    )}
+                    {addFormCategory === "expense" && isInstallment && (
+                      <div className="sm:col-span-2 space-y-1.5">
+                        <Label>Ngày kết thúc trả góp (tùy chọn)</Label>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <DatePicker
+                            value={installmentEndDate || undefined}
+                            onChange={(v) => setInstallmentEndDate(v ?? "")}
+                            placeholder="Chọn ngày trả hết"
+                            className="min-w-[200px] max-w-xs flex-1"
+                          />
+                          {installmentEndDate ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="shrink-0"
+                              onClick={() => setInstallmentEndDate("")}
+                            >
+                              Xóa ngày
+                            </Button>
+                          ) : null}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Từ tháng sau ngày này, khoản sẽ không còn tự thêm vào
+                          session tháng mới (vẫn giữ trong phiên đã có sẵn).
+                        </p>
                       </div>
                     )}
                   </div>
@@ -403,6 +460,8 @@ export default function FixedItemsSettingsPage() {
             setEditDay={setEditDay}
             editIsInstallment={editIsInstallment}
             setEditIsInstallment={setEditIsInstallment}
+            editInstallmentEndDate={editInstallmentEndDate}
+            setEditInstallmentEndDate={setEditInstallmentEndDate}
             editSaving={editSaving}
             saveEdit={saveEdit}
             cancelEdit={cancelEdit}
@@ -450,6 +509,8 @@ function FixedItemsTable({
   setEditDay,
   editIsInstallment,
   setEditIsInstallment,
+  editInstallmentEndDate,
+  setEditInstallmentEndDate,
   editSaving,
   saveEdit,
   cancelEdit,
@@ -476,6 +537,8 @@ function FixedItemsTable({
   setEditDay: (v: string) => void;
   editIsInstallment: boolean;
   setEditIsInstallment: (v: boolean) => void;
+  editInstallmentEndDate: string;
+  setEditInstallmentEndDate: (v: string) => void;
   editSaving: boolean;
   saveEdit: () => void;
   cancelEdit: () => void;
@@ -508,6 +571,11 @@ function FixedItemsTable({
             <TableHead className="text-xs">Ngày</TableHead>
             {showInstallmentColumn && (
               <TableHead className="text-xs">Trả góp</TableHead>
+            )}
+            {showInstallmentColumn && (
+              <TableHead className="text-xs whitespace-nowrap">
+                Kết thúc TG
+              </TableHead>
             )}
             <TableHead className="text-xs">Trạng thái</TableHead>
             <TableHead className="text-xs text-right">Hành động</TableHead>
@@ -555,9 +623,14 @@ function FixedItemsTable({
                   <TableCell>
                     <Select
                       value={editCategory}
-                      onValueChange={(v) =>
-                        setEditCategory(v as FixedItemCategory)
-                      }
+                      onValueChange={(v) => {
+                        const c = v as FixedItemCategory;
+                        setEditCategory(c);
+                        if (c === "income") {
+                          setEditIsInstallment(false);
+                          setEditInstallmentEndDate("");
+                        }
+                      }}
                     >
                       <SelectTrigger size="sm">
                         <SelectValue />
@@ -596,9 +669,27 @@ function FixedItemsTable({
                   <TableCell>
                     <Switch
                       checked={editIsInstallment}
-                      onCheckedChange={setEditIsInstallment}
+                      onCheckedChange={(v) => {
+                        setEditIsInstallment(v);
+                        if (!v) setEditInstallmentEndDate("");
+                      }}
                       size="sm"
                       aria-label="Trả góp"
+                    />
+                  </TableCell>
+                )}
+                {showInstallmentColumn && (
+                  <TableCell>
+                    <Input
+                      type="date"
+                      className="h-7 text-xs w-38"
+                      value={editInstallmentEndDate}
+                      onChange={(e) =>
+                        setEditInstallmentEndDate(e.target.value)
+                      }
+                      disabled={
+                        !editIsInstallment || editCategory === "income"
+                      }
                     />
                   </TableCell>
                 )}
@@ -662,6 +753,13 @@ function FixedItemsTable({
                     ) : (
                       <span className="text-[10px] text-muted-foreground">-</span>
                     )}
+                  </TableCell>
+                )}
+                {showInstallmentColumn && (
+                  <TableCell className="text-[11px] text-muted-foreground tabular-nums">
+                    {item.isInstallment
+                      ? formatInstallmentEndDateVi(item.installmentEndDate)
+                      : "—"}
                   </TableCell>
                 )}
                 <TableCell>

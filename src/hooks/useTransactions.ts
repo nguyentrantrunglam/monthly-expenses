@@ -62,6 +62,8 @@ export function useTransactions(filters?: {
   userId?: string;
   month?: string;
   category?: string;
+  /** Dashboard: gom theo từng thành viên — dùng toàn bộ giao dịch trong gia đình. */
+  allMembers?: boolean;
 }) {
   const user = useAuthStore((s) => s.user);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -98,10 +100,12 @@ export function useTransactions(filters?: {
         });
       });
 
-      // Mọi người (kể cả owner): chỉ thấy giao dịch của mình + mọi giao dịch quỹ chung.
-      list = list.filter(
-        (t) => t.userId === user.uid || t.spendingType === "shared_pool"
-      );
+      if (!filters?.allMembers) {
+        // Mọi người (kể cả owner): chỉ thấy giao dịch của mình + mọi giao dịch quỹ chung.
+        list = list.filter(
+          (t) => t.userId === user.uid || t.spendingType === "shared_pool"
+        );
+      }
 
       if (filters?.userId) {
         list = list.filter((t) => t.userId === filters.userId);
@@ -119,7 +123,14 @@ export function useTransactions(filters?: {
       setLoading(false);
     });
     return () => unsub();
-  }, [user?.familyId, user?.uid, filters?.userId, filters?.month, filters?.category]);
+  }, [
+    user?.familyId,
+    user?.uid,
+    filters?.userId,
+    filters?.month,
+    filters?.category,
+    filters?.allMembers,
+  ]);
 
   const addTransaction = async (input: {
     title?: string;

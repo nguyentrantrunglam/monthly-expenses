@@ -29,3 +29,20 @@ export function getFixedItemDisplayTitle(item: {
   }
   return item.title;
 }
+
+/**
+ * Session lưu `month` dạng YYYY-MM.
+ * Khoản trả góp có `installmentEndDate` (YYYY-MM-DD): chỉ auto-thêm vào session đến hết tháng chứa ngày kết thúc.
+ */
+export function fixedItemAppliesToSessionMonth(
+  fi: { isInstallment?: boolean; installmentEndDate?: string | null },
+  sessionMonth: string | null | undefined
+): boolean {
+  if (!sessionMonth || !fi.isInstallment || !fi.installmentEndDate?.trim()) {
+    return true;
+  }
+  const end = fi.installmentEndDate.trim();
+  const endMonth = end.length >= 7 ? end.slice(0, 7) : end;
+  if (!/^\d{4}-\d{2}$/.test(endMonth)) return true;
+  return sessionMonth <= endMonth;
+}
