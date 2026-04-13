@@ -420,7 +420,10 @@ function DayLogModal({
             <p className="mt-3 text-sm text-destructive">{localErr}</p>
           )}
         </div>
-        <DialogFooter className="shrink-0 flex-col gap-2 border-t bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <DialogFooter
+          bleed={false}
+          className="shrink-0 flex-col gap-2 border-t bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
           {onDeleteWholeDay && hasStoredLogsForDay ? (
             <Button
               type="button"
