@@ -30,6 +30,7 @@ export function useAuthListener() {
               familyId?: string | null;
               displayName?: string | null;
               role?: "owner" | "member";
+              admin?: boolean;
             }
           | undefined;
 
@@ -40,6 +41,7 @@ export function useAuthListener() {
           photoURL: firebaseUser.photoURL,
           familyId: data?.familyId ?? null,
           role: data?.role ?? null,
+          isAdmin: data?.admin === true,
         };
 
         setUser(mapped);
@@ -53,6 +55,7 @@ export function useAuthListener() {
           photoURL: firebaseUser.photoURL,
           familyId: null,
           role: null,
+          isAdmin: false,
         });
       } finally {
         setLoading(false);

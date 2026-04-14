@@ -9,6 +9,8 @@ export interface AuthUser {
   photoURL: string | null;
   familyId: string | null;
   role: UserRole;
+  /** Quản trị ứng dụng (trường `admin` trên doc `users/{uid}`). */
+  isAdmin: boolean;
 }
 
 interface AuthState {

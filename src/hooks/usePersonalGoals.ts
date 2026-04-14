@@ -84,14 +84,25 @@ function logDocId(date: string, taskId: string): string {
   return `${date}__${taskId}`;
 }
 
-export function usePersonalGoals(monthKey: string) {
+/** Đọc/ghi mục tiêu theo UID. Admin dùng `subjectUid` để xem user khác (cần rule Firestore cho phép). */
+export interface UsePersonalGoalsOptions {
+  subjectUid?: string;
+  readOnly?: boolean;
+}
+
+export function usePersonalGoals(
+  monthKey: string,
+  options?: UsePersonalGoalsOptions
+) {
   const user = useAuthStore((s) => s.user);
+  const readOnly = options?.readOnly ?? false;
+  const override = options?.subjectUid?.trim();
   const [tasks, setTasks] = useState<PersonalGoalTask[]>([]);
   const [logs, setLogs] = useState<PersonalGoalLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const uid = user?.uid ?? null;
+  const uid = override || user?.uid || null;
 
   useEffect(() => {
     if (!uid) {
@@ -186,7 +197,7 @@ export function usePersonalGoals(monthKey: string) {
       accentColor: string;
       iconId: string;
     }) => {
-      if (!uid) return;
+      if (readOnly || !uid) return;
       const db = getFirestoreDb();
       const mk = monthKey;
       const tasksCol = collection(db, "users", uid, "personalGoalMonths", mk, "tasks");
@@ -203,7 +214,7 @@ export function usePersonalGoals(monthKey: string) {
         createdAt: serverTimestamp(),
       });
     },
-    [uid, monthKey, tasks]
+    [readOnly, uid, monthKey, tasks]
   );
 
   const updateTask = useCallback(
@@ -217,7 +228,7 @@ export function usePersonalGoals(monthKey: string) {
         iconId: string;
       }
     ) => {
-      if (!uid) return;
+      if (readOnly || !uid) return;
       const db = getFirestoreDb();
       const mk = monthKey;
       const ref = doc(db, "users", uid, "personalGoalMonths", mk, "tasks", taskId);
@@ -231,12 +242,12 @@ export function usePersonalGoals(monthKey: string) {
         iconId,
       });
     },
-    [uid, monthKey]
+    [readOnly, uid, monthKey]
   );
 
   const deleteTask = useCallback(
     async (taskId: string) => {
-      if (!uid) return;
+      if (readOnly || !uid) return;
       const db = getFirestoreDb();
       const mk = monthKey;
       const logsCol = collection(db, "users", uid, "personalGoalMonths", mk, "logs");
@@ -246,12 +257,12 @@ export function usePersonalGoals(monthKey: string) {
       const taskRef = doc(db, "users", uid, "personalGoalMonths", mk, "tasks", taskId);
       await deleteDoc(taskRef);
     },
-    [uid, monthKey]
+    [readOnly, uid, monthKey]
   );
 
   const saveLog = useCallback(
     async (input: { date: string; taskId: string; amount: number; note: string }) => {
-      if (!uid) return;
+      if (readOnly || !uid) return;
       const amt = Math.max(0, input.amount);
       const note = input.note.trim();
       const db = getFirestoreDb();
@@ -274,12 +285,12 @@ export function usePersonalGoals(monthKey: string) {
         { merge: true }
       );
     },
-    [uid, monthKey]
+    [readOnly, uid, monthKey]
   );
 
   const deleteLog = useCallback(
     async (date: string, taskId: string) => {
-      if (!uid) return;
+      if (readOnly || !uid) return;
       const db = getFirestoreDb();
       const mk = monthKey;
       const id = logDocId(date, taskId);
@@ -287,7 +298,7 @@ export function usePersonalGoals(monthKey: string) {
         doc(db, "users", uid, "personalGoalMonths", mk, "logs", id)
       );
     },
-    [uid, monthKey]
+    [readOnly, uid, monthKey]
   );
 
   return {

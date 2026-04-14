@@ -70,6 +70,7 @@ export function GoalsMonthCalendar({
   logsByDate,
   loading,
   onOpenDay,
+  readOnly,
 }: {
   monthKey: string;
   onMonthKeyChange: (key: string) => void;
@@ -77,6 +78,8 @@ export function GoalsMonthCalendar({
   logsByDate: Record<string, GoalsDayBar[]>;
   loading?: boolean;
   onOpenDay: (ymd: string) => void;
+  /** Admin xem user khác — chỉ xem nhật ký, không ghi. */
+  readOnly?: boolean;
 }) {
   const monthDate = useMemo(() => monthDateFromKey(monthKey), [monthKey]);
 
@@ -90,8 +93,9 @@ export function GoalsMonthCalendar({
     <div className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-muted-foreground sm:max-w-md">
-          Cùng kiểu lưới với Lịch gia đình: bấm ô ngày để ghi/sửa nhật ký; bấm
-          thanh màu cũng mở form ngày đó.
+          {readOnly
+            ? "Bấm ô ngày hoặc thanh màu để xem nhật ký (chỉ đọc)."
+            : "Cùng kiểu lưới với Lịch gia đình: bấm ô ngày để ghi/sửa nhật ký; bấm thanh màu cũng mở form ngày đó."}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={onToday}>
