@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFirebaseAdmin, verifyIdToken } from "@/lib/firebase/admin";
 import type { YoutubeSearchResultItem } from "@/lib/youtube";
-import { getFirestore } from "firebase-admin/firestore";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/youtube/search?q=...
- * Cần Bearer Firebase ID; user phải có familyId.
+ * Cần Bearer Firebase ID (đã đăng nhập; không cần gia đình).
  * Cấu hình YOUTUBE_API_KEY (YouTube Data API v3) trên server.
  */
 export async function GET(req: NextRequest) {
@@ -23,20 +22,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const decoded = await verifyIdToken(token);
-    const uid = decoded.uid;
-
+    await verifyIdToken(token);
     getFirebaseAdmin();
-    const db = getFirestore();
-    const userSnap = await db.collection("users").doc(uid).get();
-    const familyId = userSnap.data()?.familyId as string | undefined;
-
-    if (!familyId) {
-      return NextResponse.json(
-        { error: "Cần tham gia gia đình để tìm nhạc." },
-        { status: 403 },
-      );
-    }
 
     const apiKey = process.env.YOUTUBE_API_KEY?.trim();
     if (!apiKey) {
