@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase/client";
@@ -19,14 +19,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pendingRedirect = useRef(false);
+  /** State (not ref): Firebase may set `user` before this flag; refs don't re-run effects. */
+  const [redirectPending, setRedirectPending] = useState(false);
 
   useEffect(() => {
-    if (pendingRedirect.current && !authLoading && user) {
-      pendingRedirect.current = false;
-      router.replace("/dashboard");
-    }
-  }, [user, authLoading, router]);
+    if (!redirectPending || authLoading || !user) return;
+    setRedirectPending(false);
+    router.replace("/dashboard");
+  }, [user, authLoading, router, redirectPending]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +35,7 @@ export default function LoginPage() {
     try {
       const auth = getFirebaseAuth();
       await signInWithEmailAndPassword(auth, email, password);
-      pendingRedirect.current = true;
+      setRedirectPending(true);
     } catch (err) {
       console.error(err);
       setError("Đăng nhập thất bại. Vui lòng kiểm tra email/mật khẩu.");
