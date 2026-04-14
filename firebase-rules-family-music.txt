@@ -1,0 +1,30 @@
+Mẫu quy tắc Firestore cho tính năng Nhạc gia đình (document trạng thái chung).
+Dán vào Firebase Console → Firestore → Rules, trong `match /families/{familyId}`.
+
+  match /musicRoom/{docId} {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function memberFamilyId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.familyId;
+    }
+    function isFamilyMember() {
+      return isSignedIn() && memberFamilyId() == familyId;
+    }
+    allow read: if isFamilyMember();
+    /** Mọi thành viên có thể tạo/cập nhật phòng nhạc (thêm queue, next). */
+    allow create, update: if isFamilyMember()
+      && request.resource.data.keys().hasAll([
+        "queue",
+        "currentIndex",
+        "updatedAt",
+        "isPlaying",
+        "playbackPositionSec",
+        "stateAt",
+      ]);
+    allow delete: if false;
+  }
+
+Lưu ý:
+- Nếu đổi tên field trong app, cập nhật hasAll cho khớp.
+- `docId` thực tế trong app là `state` (một document cố định).

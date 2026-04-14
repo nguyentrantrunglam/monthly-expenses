@@ -27,6 +27,7 @@ import {
   ListChecks,
   StickyNote,
   MessagesSquare,
+  Music2,
   Target,
   LogOut,
   Sun,
@@ -128,6 +129,12 @@ const navGroups: NavGroup[] = [
             href: "/chat",
             label: "Chat gia đình",
             icon: <MessagesSquare className="h-4 w-4" />,
+            requiresFamily: true,
+          },
+          {
+            href: "/music",
+            label: "Nhạc gia đình",
+            icon: <Music2 className="h-4 w-4" />,
             requiresFamily: true,
           },
         ],
@@ -448,7 +455,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         onScroll={handleMainScroll}
         className="flex min-h-0 flex-1 flex-col overflow-y-auto"
       >
-        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-4 py-6 md:px-8 md:py-8">
+        <div
+          className={cn(
+            "mx-auto flex min-h-0 w-full flex-1 flex-col px-4 py-6 md:px-8 md:py-8",
+            pathname.startsWith("/music")
+              ? "max-w-[min(100%,92rem)]"
+              : "max-w-5xl",
+          )}
+        >
           {children}
         </div>
       </main>
