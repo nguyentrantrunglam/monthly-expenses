@@ -39,6 +39,10 @@ type Props = {
   playbackPositionSec: number;
   stateAtMillis: number | null;
   onPlaybackChange: (isPlaying: boolean, positionSec: number) => void;
+  /** Tắt tiếng loa (chuông thông báo có người vào phòng) */
+  outputMuted?: boolean;
+  /** Tăng sau chuông để seek lại theo trạng thái Firestore */
+  resyncTick?: number;
 };
 
 /**
@@ -50,6 +54,8 @@ export function FamilyMusicPlayer({
   playbackPositionSec,
   stateAtMillis,
   onPlaybackChange,
+  outputMuted = false,
+  resyncTick = 0,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YtPlayer | null>(null);
@@ -109,19 +115,8 @@ export function FamilyMusicPlayer({
           onReady: (e) => {
             if (cancelled) return;
             playerRef.current = e.target;
-            lastVideoIdRef.current = p.videoId;
-            applyingRemoteRef.current = true;
-            const eff = getEffectivePlaybackSec(
-              p.playbackPositionSec,
-              p.isPlaying,
-              p.stateAtMillis,
-            );
-            e.target.seekTo(eff, true);
-            if (p.isPlaying) e.target.playVideo();
-            else e.target.pauseVideo();
-            setTimeout(() => {
-              applyingRemoteRef.current = false;
-            }, 500);
+            /** Để effect sync chạy loadVideoById + seek một lần (tránh trùng seek với onReady). */
+            lastVideoIdRef.current = null;
             setPlayerReady(true);
           },
           onStateChange: (e) => {
@@ -152,10 +147,11 @@ export function FamilyMusicPlayer({
     const player = playerRef.current;
     if (!player || !videoId) return;
 
+    const p = propsRef.current;
     const effective = getEffectivePlaybackSec(
-      playbackPositionSec,
-      isPlaying,
-      stateAtMillis,
+      p.playbackPositionSec,
+      p.isPlaying,
+      p.stateAtMillis,
     );
     applyingRemoteRef.current = true;
     if (lastVideoIdRef.current !== videoId) {
@@ -163,42 +159,72 @@ export function FamilyMusicPlayer({
       player.loadVideoById(videoId, effective);
     } else {
       player.seekTo(effective, true);
-      if (isPlaying) player.playVideo();
+      if (p.isPlaying) player.playVideo();
       else player.pauseVideo();
     }
     const t = setTimeout(() => {
       applyingRemoteRef.current = false;
     }, 600);
     return () => clearTimeout(t);
-  }, [
-    playerReady,
-    videoId,
-    stateAtMillis,
-    isPlaying,
-    playbackPositionSec,
-  ]);
+    /* Chỉ [playerReady, videoId, isPlaying]: không seek khi mỗi lần Firestore đổi playbackPositionSec/stateAt (tránh giật). */
+  }, [playerReady, videoId, isPlaying]);
+
+  const DRIFT_CHECK_MS = 4000;
+  const DRIFT_SEEK_SEC = 3.5;
 
   useEffect(() => {
     if (!playerReady || !isPlaying) return;
     const id = setInterval(() => {
       const player = playerRef.current;
       if (!player || applyingRemoteRef.current) return;
+      const pr = propsRef.current;
       const target = getEffectivePlaybackSec(
-        playbackPositionSec,
-        isPlaying,
-        stateAtMillis,
+        pr.playbackPositionSec,
+        pr.isPlaying,
+        pr.stateAtMillis,
       );
       const cur = player.getCurrentTime();
-      if (Math.abs(target - cur) > 2) {
+      if (Math.abs(target - cur) > DRIFT_SEEK_SEC) {
         applyingRemoteRef.current = true;
         player.seekTo(target, true);
         setTimeout(() => {
           applyingRemoteRef.current = false;
-        }, 300);
+        }, 400);
       }
-    }, 2500);
+    }, DRIFT_CHECK_MS);
     return () => clearInterval(id);
-  }, [playerReady, isPlaying, playbackPositionSec, stateAtMillis]);
+  }, [playerReady, isPlaying]);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!playerReady || !player) return;
+    try {
+      player.setVolume(outputMuted ? 0 : 100);
+    } catch {
+      /* ignore */
+    }
+  }, [playerReady, outputMuted]);
+
+  useEffect(() => {
+    if (!playerReady) return;
+    const player = playerRef.current;
+    if (!player || !videoId) return;
+    if (resyncTick === 0) return;
+    const p = propsRef.current;
+    const effective = getEffectivePlaybackSec(
+      p.playbackPositionSec,
+      p.isPlaying,
+      p.stateAtMillis,
+    );
+    applyingRemoteRef.current = true;
+    player.seekTo(effective, true);
+    if (p.isPlaying) player.playVideo();
+    else player.pauseVideo();
+    const t = setTimeout(() => {
+      applyingRemoteRef.current = false;
+    }, 600);
+    return () => clearTimeout(t);
+  }, [playerReady, videoId, resyncTick]);
 
   return (
     <div

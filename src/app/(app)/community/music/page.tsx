@@ -1,15 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { useAuthStore } from "@/lib/stores/authStore";
 import { useCommunityMusic } from "@/hooks/useCommunityMusic";
+import { useMusicRoomPresence } from "@/hooks/useMusicRoomPresence";
+import { useMusicRoomJoinSequence } from "@/hooks/useMusicRoomJoinSequence";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Plus, SkipForward, ListMusic } from "lucide-react";
 import { AddTrackDialog } from "@/components/family-music/AddTrackDialog";
 import { FamilyMusicPlayer } from "@/components/family-music/FamilyMusicPlayer";
 import { FamilyMusicPlaylist } from "@/components/family-music/FamilyMusicPlaylist";
+import { MusicRoomPeerList } from "@/components/family-music/MusicRoomPeerList";
 
 export default function CommunityMusicPage() {
+  const user = useAuthStore((s) => s.user);
   const {
     state,
     loading,
@@ -23,6 +28,16 @@ export default function CommunityMusicPage() {
     reorderQueue,
     publishPlaybackState,
   } = useCommunityMusic();
+  const { peers, joinEvent } = useMusicRoomPresence({
+    scope: "community",
+    enabled: Boolean(user?.uid),
+  });
+  const queue = state?.queue ?? [];
+  const showPlayer = Boolean(currentItem?.videoId);
+  const { outputMuted, resyncTick } = useMusicRoomJoinSequence(
+    joinEvent,
+    showPlayer,
+  );
   const [localError, setLocalError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
@@ -62,9 +77,7 @@ export default function CommunityMusicPage() {
     }
   };
 
-  const queue = state?.queue ?? [];
   const currentId = currentItem?.id;
-  const showPlayer = Boolean(currentItem?.videoId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -72,12 +85,12 @@ export default function CommunityMusicPage() {
         <h1 className="text-2xl font-semibold tracking-tight">
           Nhạc cộng đồng
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        {/* <p className="mt-1 text-sm text-muted-foreground">
           Một phòng phát chung cho mọi người đang mở trang; thêm bài bằng + (link
           hoặc tìm YouTube), kéo thả, xóa, chuyển bài — khác phòng{" "}
           <span className="font-medium text-foreground">Nhạc gia đình</span>{" "}
           (chỉ thành viên cùng gia đình).
-        </p>
+        </p> */}
       </div>
 
       {error && (
@@ -105,6 +118,8 @@ export default function CommunityMusicPage() {
                 playbackPositionSec={state?.playbackPositionSec ?? 0}
                 stateAtMillis={state?.stateAtMillis ?? null}
                 onPlaybackChange={publishPlaybackState}
+                outputMuted={outputMuted}
+                resyncTick={resyncTick}
               />
             ) : (
               <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-muted px-6 text-center">
@@ -146,6 +161,13 @@ export default function CommunityMusicPage() {
         </div>
 
         <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:w-[min(100%,17rem)] xl:w-[18rem]">
+          {user?.uid ? (
+            <MusicRoomPeerList
+              peers={peers}
+              selfUid={user.uid}
+              className="mb-4"
+            />
+          ) : null}
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-muted-foreground">
               Danh sách phát

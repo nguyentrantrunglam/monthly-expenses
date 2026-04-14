@@ -9,6 +9,7 @@ declare global {
     seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
     getCurrentTime: () => number;
     getPlayerState: () => number;
+    setVolume: (volume: number) => void;
     destroy: () => void;
   }
 

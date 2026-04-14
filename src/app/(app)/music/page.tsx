@@ -4,12 +4,15 @@ import { useState } from "react";
 import { useFamily } from "@/hooks/useFamily";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { useFamilyMusic } from "@/hooks/useFamilyMusic";
+import { useMusicRoomPresence } from "@/hooks/useMusicRoomPresence";
+import { useMusicRoomJoinSequence } from "@/hooks/useMusicRoomJoinSequence";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Music2, Plus, SkipForward, ListMusic } from "lucide-react";
 import { AddTrackDialog } from "@/components/family-music/AddTrackDialog";
 import { FamilyMusicPlayer } from "@/components/family-music/FamilyMusicPlayer";
 import { FamilyMusicPlaylist } from "@/components/family-music/FamilyMusicPlaylist";
+import { MusicRoomPeerList } from "@/components/family-music/MusicRoomPeerList";
 
 export default function FamilyMusicPage() {
   const user = useAuthStore((s) => s.user);
@@ -27,6 +30,17 @@ export default function FamilyMusicPage() {
     reorderQueue,
     publishPlaybackState,
   } = useFamilyMusic();
+  const { peers, joinEvent } = useMusicRoomPresence({
+    scope: "family",
+    familyId: user?.familyId ?? null,
+    enabled: Boolean(user?.familyId),
+  });
+  const queue = state?.queue ?? [];
+  const showPlayer = Boolean(currentItem?.videoId);
+  const { outputMuted, resyncTick } = useMusicRoomJoinSequence(
+    joinEvent,
+    showPlayer,
+  );
   const [localError, setLocalError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
@@ -82,9 +96,7 @@ export default function FamilyMusicPage() {
     }
   };
 
-  const queue = state?.queue ?? [];
   const currentId = currentItem?.id;
-  const showPlayer = Boolean(currentItem?.videoId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -124,6 +136,8 @@ export default function FamilyMusicPage() {
                 playbackPositionSec={state?.playbackPositionSec ?? 0}
                 stateAtMillis={state?.stateAtMillis ?? null}
                 onPlaybackChange={publishPlaybackState}
+                outputMuted={outputMuted}
+                resyncTick={resyncTick}
               />
             ) : (
               <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-muted px-6 text-center">
@@ -165,6 +179,11 @@ export default function FamilyMusicPage() {
         </div>
 
         <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:w-[min(100%,17rem)] xl:w-[18rem]">
+          <MusicRoomPeerList
+            peers={peers}
+            selfUid={user.uid}
+            className="mb-4"
+          />
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-muted-foreground">
               Danh sách phát

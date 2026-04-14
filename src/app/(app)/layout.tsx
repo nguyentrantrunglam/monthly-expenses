@@ -57,6 +57,8 @@ interface NavSubsection {
 
 interface NavGroup {
   title: string;
+  /** Ẩn cả nhóm khi chưa tham gia gia đình (chưa có familyId) */
+  requiresFamily?: boolean;
   /** Nhóm phẳng (vd. Tổng quan, Cá nhân) */
   items?: NavItem[];
   /** Nhóm lồng (vd. Gia đình → Chi tiêu / Kế hoạch) */
@@ -66,6 +68,7 @@ interface NavGroup {
 const navGroups: NavGroup[] = [
   {
     title: "Tổng quan",
+    requiresFamily: true,
     items: [
       {
         href: "/dashboard",
@@ -76,6 +79,7 @@ const navGroups: NavGroup[] = [
   },
   {
     title: "Gia đình",
+    requiresFamily: true,
     subsections: [
       {
         title: "Chi tiêu",
@@ -288,6 +292,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           {navGroups.map((group) => {
+            if (group.requiresFamily && !user?.familyId) return null;
             const isOpen = openGroups[group.title] !== false;
             return (
               <div key={group.title} className="mb-5">
