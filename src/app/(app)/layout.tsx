@@ -28,6 +28,7 @@ import {
   StickyNote,
   MessagesSquare,
   Music2,
+  UsersRound,
   Target,
   LogOut,
   Sun,
@@ -148,6 +149,16 @@ const navGroups: NavGroup[] = [
         href: "/personal-goals",
         label: "Mục tiêu cá nhân",
         icon: <Target className="h-4 w-4" />,
+      },
+    ],
+  },
+  {
+    title: "Cộng đồng",
+    items: [
+      {
+        href: "/community/music",
+        label: "Nhạc cộng đồng",
+        icon: <UsersRound className="h-4 w-4" />,
       },
     ],
   },
@@ -458,7 +469,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <div
           className={cn(
             "mx-auto flex min-h-0 w-full flex-1 flex-col px-4 py-6 md:px-8 md:py-8",
-            pathname.startsWith("/music")
+            pathname.startsWith("/music") ||
+            pathname.startsWith("/community/music")
               ? "max-w-[min(100%,92rem)]"
               : "max-w-5xl",
           )}

@@ -28,3 +28,24 @@ Dán vào Firebase Console → Firestore → Rules, trong `match /families/{fami
 Lưu ý:
 - Nếu đổi tên field trong app, cập nhật hasAll cho khớp.
 - `docId` thực tế trong app là `state` (một document cố định).
+
+---
+
+Nhạc cộng đồng (document riêng, toàn app dùng chung). Thêm vào rules (cùng cấp `match /families/{familyId}`):
+
+  match /communityMusic/{docId} {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    allow read: if isSignedIn();
+    allow create, update: if isSignedIn()
+      && request.resource.data.keys().hasAll([
+        "queue",
+        "currentIndex",
+        "updatedAt",
+        "isPlaying",
+        "playbackPositionSec",
+        "stateAt",
+      ]);
+    allow delete: if false;
+  }

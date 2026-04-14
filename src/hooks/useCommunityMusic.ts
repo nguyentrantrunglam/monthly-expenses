@@ -24,13 +24,13 @@ import {
   parseMusicRoomState,
 } from "@/lib/music-room-shared";
 
-export type { MusicQueueItem };
-export type FamilyMusicState = MusicRoomState;
+/** Collection `communityMusic`, document `state` — đúng 2 cặp segment Firestore. */
+const COMMUNITY_MUSIC_DOC = ["communityMusic", "state"] as const;
 
 /**
- * Firestore: families/{familyId}/musicRoom/state
+ * Firestore: communityMusic/state — một phòng chung cho mọi user đã đăng nhập.
  */
-export function useFamilyMusic() {
+export function useCommunityMusic() {
   const user = useAuthStore((s) => s.user);
   const [state, setState] = useState<MusicRoomState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,13 +38,13 @@ export function useFamilyMusic() {
   const [actionBusy, setActionBusy] = useState(false);
 
   useEffect(() => {
-    if (!user?.familyId) {
+    if (!user?.uid) {
       setState(null);
       setLoading(false);
       return;
     }
     const db = getFirestoreDb();
-    const ref = doc(db, "families", user.familyId, "musicRoom", "state");
+    const ref = doc(db, ...COMMUNITY_MUSIC_DOC);
     setLoading(true);
     const unsub = onSnapshot(
       ref,
@@ -66,12 +66,12 @@ export function useFamilyMusic() {
       },
       (e) => {
         console.error(e);
-        setError("Không tải được phòng nhạc.");
+        setError("Không tải được phòng nhạc cộng đồng.");
         setLoading(false);
       },
     );
     return () => unsub();
-  }, [user?.familyId]);
+  }, [user?.uid]);
 
   const currentItem = useMemo(() => {
     if (!state || state.queue.length === 0) return null;
@@ -79,24 +79,26 @@ export function useFamilyMusic() {
     return state.queue[idx] ?? null;
   }, [state]);
 
+  const roomRef = useCallback(() => {
+    return doc(getFirestoreDb(), ...COMMUNITY_MUSIC_DOC);
+  }, []);
+
   const publishPlaybackState = useCallback(
     async (isPlaying: boolean, positionSec: number) => {
-      if (!user?.familyId) return;
-      const db = getFirestoreDb();
-      const ref = doc(db, "families", user.familyId, "musicRoom", "state");
-      await updateDoc(ref, {
+      if (!user?.uid) return;
+      await updateDoc(roomRef(), {
         isPlaying,
         playbackPositionSec: Math.max(0, positionSec),
         stateAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
     },
-    [user?.familyId],
+    [user?.uid, roomRef],
   );
 
   const addFromUrl = useCallback(
     async (urlInput: string) => {
-      if (!user?.familyId || !user.uid) {
+      if (!user?.uid) {
         throw new Error("Chưa đăng nhập");
       }
       const videoId = extractYoutubeVideoId(urlInput);
@@ -111,7 +113,7 @@ export function useFamilyMusic() {
       setActionBusy(true);
       try {
         const db = getFirestoreDb();
-        const ref = doc(db, "families", user.familyId, "musicRoom", "state");
+        const ref = doc(db, ...COMMUNITY_MUSIC_DOC);
         await runTransaction(db, async (transaction) => {
           const snap = await transaction.get(ref);
           const prev = snap.exists()
@@ -159,11 +161,11 @@ export function useFamilyMusic() {
   );
 
   const goNext = useCallback(async () => {
-    if (!user?.familyId) throw new Error("Chưa đăng nhập");
+    if (!user?.uid) throw new Error("Chưa đăng nhập");
     setActionBusy(true);
     try {
       const db = getFirestoreDb();
-      const ref = doc(db, "families", user.familyId, "musicRoom", "state");
+      const ref = doc(db, ...COMMUNITY_MUSIC_DOC);
       await runTransaction(db, async (transaction) => {
         const snap = await transaction.get(ref);
         if (!snap.exists()) return;
@@ -181,15 +183,15 @@ export function useFamilyMusic() {
     } finally {
       setActionBusy(false);
     }
-  }, [user?.familyId]);
+  }, [user?.uid]);
 
   const selectQueueItem = useCallback(
     async (itemId: string) => {
-      if (!user?.familyId) throw new Error("Chưa đăng nhập");
+      if (!user?.uid) throw new Error("Chưa đăng nhập");
       setActionBusy(true);
       try {
         const db = getFirestoreDb();
-        const ref = doc(db, "families", user.familyId, "musicRoom", "state");
+        const ref = doc(db, ...COMMUNITY_MUSIC_DOC);
         await runTransaction(db, async (transaction) => {
           const snap = await transaction.get(ref);
           if (!snap.exists()) return;
@@ -208,16 +210,16 @@ export function useFamilyMusic() {
         setActionBusy(false);
       }
     },
-    [user?.familyId],
+    [user?.uid],
   );
 
   const removeQueueItem = useCallback(
     async (itemId: string) => {
-      if (!user?.familyId) throw new Error("Chưa đăng nhập");
+      if (!user?.uid) throw new Error("Chưa đăng nhập");
       setActionBusy(true);
       try {
         const db = getFirestoreDb();
-        const ref = doc(db, "families", user.familyId, "musicRoom", "state");
+        const ref = doc(db, ...COMMUNITY_MUSIC_DOC);
         await runTransaction(db, async (transaction) => {
           const snap = await transaction.get(ref);
           if (!snap.exists()) return;
@@ -267,17 +269,17 @@ export function useFamilyMusic() {
         setActionBusy(false);
       }
     },
-    [user?.familyId],
+    [user?.uid],
   );
 
   const reorderQueue = useCallback(
     async (fromIndex: number, toIndex: number) => {
-      if (!user?.familyId) throw new Error("Chưa đăng nhập");
+      if (!user?.uid) throw new Error("Chưa đăng nhập");
       if (fromIndex === toIndex) return;
       setActionBusy(true);
       try {
         const db = getFirestoreDb();
-        const ref = doc(db, "families", user.familyId, "musicRoom", "state");
+        const ref = doc(db, ...COMMUNITY_MUSIC_DOC);
         await runTransaction(db, async (transaction) => {
           const snap = await transaction.get(ref);
           if (!snap.exists()) return;
@@ -311,7 +313,7 @@ export function useFamilyMusic() {
         setActionBusy(false);
       }
     },
-    [user?.familyId],
+    [user?.uid],
   );
 
   return {
