@@ -290,7 +290,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           {user?.familyId && <NotificationBell />}
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <nav className="scrollbar-none flex-1 overflow-y-auto px-3 py-4">
           {navGroups.map((group) => {
             if (group.requiresFamily && !user?.familyId) return null;
             const isOpen = openGroups[group.title] !== false;

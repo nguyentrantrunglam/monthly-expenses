@@ -180,7 +180,7 @@ export function FamilyMusicPlaylist({
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <ul className="flex max-h-[min(65vh,28rem)] flex-col gap-1.5 overflow-y-auto px-0.5 py-px pr-1 lg:max-h-[calc(100vh-8rem)]">
+        <ul className="flex flex-col gap-1.5 px-0.5 py-px pr-1">
           {queue.map((item, index) => (
             <SortableRow
               key={item.id}

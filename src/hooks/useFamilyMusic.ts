@@ -136,20 +136,26 @@ export function useFamilyMusic() {
           };
 
           const queue = [...prev.queue, newItem];
-          const currentIndex = queue.length - 1;
 
-          transaction.set(
-            ref,
-            {
+          if (prev.queue.length === 0) {
+            transaction.set(
+              ref,
+              {
+                queue,
+                currentIndex: 0,
+                isPlaying: false,
+                playbackPositionSec: 0,
+                stateAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true },
+            );
+          } else {
+            transaction.update(ref, {
               queue,
-              currentIndex,
-              isPlaying: true,
-              playbackPositionSec: 0,
-              stateAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
-            },
-            { merge: true },
-          );
+            });
+          }
         });
       } finally {
         setActionBusy(false);
@@ -158,9 +164,10 @@ export function useFamilyMusic() {
     [user],
   );
 
-  const goNext = useCallback(async () => {
+  const goNext = useCallback(async (): Promise<boolean> => {
     if (!user?.familyId) throw new Error("Chưa đăng nhập");
     setActionBusy(true);
+    let updated = false;
     try {
       const db = getFirestoreDb();
       const ref = doc(db, "families", user.familyId, "musicRoom", "state");
@@ -169,6 +176,7 @@ export function useFamilyMusic() {
         if (!snap.exists()) return;
         const prev = parseMusicRoomState(snap.data() as Record<string, unknown>);
         if (prev.queue.length === 0) return;
+        updated = true;
         const nextIndex = (prev.currentIndex + 1) % prev.queue.length;
         transaction.update(ref, {
           currentIndex: nextIndex,
@@ -181,6 +189,7 @@ export function useFamilyMusic() {
     } finally {
       setActionBusy(false);
     }
+    return updated;
   }, [user?.familyId]);
 
   const selectQueueItem = useCallback(
@@ -198,7 +207,7 @@ export function useFamilyMusic() {
           if (index < 0 || index === prev.currentIndex) return;
           transaction.update(ref, {
             currentIndex: index,
-            isPlaying: true,
+            isPlaying: false,
             playbackPositionSec: 0,
             stateAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -250,7 +259,7 @@ export function useFamilyMusic() {
             transaction.update(ref, {
               queue,
               currentIndex,
-              isPlaying: true,
+              isPlaying: prev.isPlaying,
               playbackPositionSec: 0,
               stateAt: serverTimestamp(),
               updatedAt: serverTimestamp(),

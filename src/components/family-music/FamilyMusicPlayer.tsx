@@ -35,14 +35,20 @@ function loadYoutubeIframeApi(): Promise<void> {
 
 type Props = {
   videoId: string;
+  /** id phần tử hàng chờ — đổi khi chọn bài khác kể cả cùng videoId YouTube */
+  activeQueueItemId: string;
   isPlaying: boolean;
   playbackPositionSec: number;
   stateAtMillis: number | null;
   onPlaybackChange: (isPlaying: boolean, positionSec: number) => void;
+  /** Hết bài (ENDED) — chuyển bài trong hàng chờ */
+  onVideoEnded?: () => void;
   /** Tắt tiếng loa (chuông thông báo có người vào phòng) */
   outputMuted?: boolean;
   /** Tăng sau chuông để seek lại theo trạng thái Firestore */
   resyncTick?: number;
+  /** Tăng sau khi goNext() (lặp một bài / đồng bộ vị trí đầu) */
+  boundaryTick?: number;
 };
 
 /**
@@ -50,12 +56,15 @@ type Props = {
  */
 export function FamilyMusicPlayer({
   videoId,
+  activeQueueItemId,
   isPlaying,
   playbackPositionSec,
   stateAtMillis,
   onPlaybackChange,
+  onVideoEnded,
   outputMuted = false,
   resyncTick = 0,
+  boundaryTick = 0,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YtPlayer | null>(null);
@@ -63,6 +72,7 @@ export function FamilyMusicPlayer({
   const lastVideoIdRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onPlaybackChangeRef = useRef(onPlaybackChange);
+  const onVideoEndedRef = useRef(onVideoEnded);
   const propsRef = useRef({
     videoId,
     isPlaying,
@@ -73,6 +83,10 @@ export function FamilyMusicPlayer({
   useLayoutEffect(() => {
     onPlaybackChangeRef.current = onPlaybackChange;
   }, [onPlaybackChange]);
+
+  useLayoutEffect(() => {
+    onVideoEndedRef.current = onVideoEnded;
+  }, [onVideoEnded]);
 
   useLayoutEffect(() => {
     propsRef.current = {
@@ -123,6 +137,10 @@ export function FamilyMusicPlayer({
             if (cancelled || applyingRemoteRef.current) return;
             const st = e.data;
             const PS = YT.PlayerState;
+            if (st === PS.ENDED) {
+              onVideoEndedRef.current?.();
+              return;
+            }
             if (st === PS.PLAYING) {
               schedulePublish(true, e.target.getCurrentTime());
             } else if (st === PS.PAUSED) {
@@ -156,7 +174,12 @@ export function FamilyMusicPlayer({
     applyingRemoteRef.current = true;
     if (lastVideoIdRef.current !== videoId) {
       lastVideoIdRef.current = videoId;
-      player.loadVideoById(videoId, effective);
+      /** loadVideoById luôn kích hoạt phát; khi Firestore isPlaying=false dùng cueVideoById (vd. chọn bài trong hàng chờ). */
+      if (p.isPlaying) {
+        player.loadVideoById(videoId, effective);
+      } else {
+        player.cueVideoById(videoId, effective);
+      }
     } else {
       player.seekTo(effective, true);
       if (p.isPlaying) player.playVideo();
@@ -166,8 +189,8 @@ export function FamilyMusicPlayer({
       applyingRemoteRef.current = false;
     }, 600);
     return () => clearTimeout(t);
-    /* Chỉ [playerReady, videoId, isPlaying]: không seek khi mỗi lần Firestore đổi playbackPositionSec/stateAt (tránh giật). */
-  }, [playerReady, videoId, isPlaying]);
+    /* Chỉ [playerReady, videoId, isPlaying, activeQueueItemId]: không seek theo mỗi lần đổi position (tránh giật). */
+  }, [playerReady, videoId, isPlaying, activeQueueItemId]);
 
   const DRIFT_CHECK_MS = 4000;
   const DRIFT_SEEK_SEC = 3.5;
@@ -225,6 +248,27 @@ export function FamilyMusicPlayer({
     }, 600);
     return () => clearTimeout(t);
   }, [playerReady, videoId, resyncTick]);
+
+  useEffect(() => {
+    if (!playerReady) return;
+    const player = playerRef.current;
+    if (!player || !videoId) return;
+    if (boundaryTick === 0) return;
+    const p = propsRef.current;
+    const effective = getEffectivePlaybackSec(
+      p.playbackPositionSec,
+      p.isPlaying,
+      p.stateAtMillis,
+    );
+    applyingRemoteRef.current = true;
+    player.seekTo(effective, true);
+    if (p.isPlaying) player.playVideo();
+    else player.pauseVideo();
+    const t = setTimeout(() => {
+      applyingRemoteRef.current = false;
+    }, 600);
+    return () => clearTimeout(t);
+  }, [playerReady, videoId, boundaryTick]);
 
   return (
     <div

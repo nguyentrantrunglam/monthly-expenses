@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useFamily } from "@/hooks/useFamily";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { useFamilyMusic } from "@/hooks/useFamilyMusic";
@@ -12,7 +12,6 @@ import { Loader2, Music2, Plus, SkipForward, ListMusic } from "lucide-react";
 import { AddTrackDialog } from "@/components/family-music/AddTrackDialog";
 import { FamilyMusicPlayer } from "@/components/family-music/FamilyMusicPlayer";
 import { FamilyMusicPlaylist } from "@/components/family-music/FamilyMusicPlaylist";
-import { MusicRoomPeerList } from "@/components/family-music/MusicRoomPeerList";
 
 export default function FamilyMusicPage() {
   const user = useAuthStore((s) => s.user);
@@ -30,7 +29,7 @@ export default function FamilyMusicPage() {
     reorderQueue,
     publishPlaybackState,
   } = useFamilyMusic();
-  const { peers, joinEvent } = useMusicRoomPresence({
+  const { joinEvent } = useMusicRoomPresence({
     scope: "family",
     familyId: user?.familyId ?? null,
     enabled: Boolean(user?.familyId),
@@ -43,6 +42,16 @@ export default function FamilyMusicPage() {
   );
   const [localError, setLocalError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [boundaryTick, setBoundaryTick] = useState(0);
+
+  const handleVideoEnded = useCallback(async () => {
+    try {
+      const ok = await goNext();
+      if (ok) setBoundaryTick((t) => t + 1);
+    } catch {
+      /* ignore */
+    }
+  }, [goNext]);
 
   if (!user?.familyId || !family) {
     return (
@@ -132,12 +141,15 @@ export default function FamilyMusicPage() {
             ) : showPlayer ? (
               <FamilyMusicPlayer
                 videoId={currentItem!.videoId}
-                isPlaying={state?.isPlaying ?? true}
+                activeQueueItemId={currentItem!.id}
+                isPlaying={state?.isPlaying ?? false}
                 playbackPositionSec={state?.playbackPositionSec ?? 0}
                 stateAtMillis={state?.stateAtMillis ?? null}
                 onPlaybackChange={publishPlaybackState}
+                onVideoEnded={handleVideoEnded}
                 outputMuted={outputMuted}
                 resyncTick={resyncTick}
+                boundaryTick={boundaryTick}
               />
             ) : (
               <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-muted px-6 text-center">
@@ -178,13 +190,11 @@ export default function FamilyMusicPage() {
           </Card>
         </div>
 
-        <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:w-[min(100%,17rem)] xl:w-[18rem]">
-          <MusicRoomPeerList
-            peers={peers}
-            selfUid={user.uid}
-            className="mb-4"
-          />
-          <div className="mb-3 flex items-center justify-between gap-2">
+        <aside
+          className="flex w-full min-h-0 shrink-0 flex-col overflow-hidden lg:sticky lg:top-6 lg:max-h-[calc(100svh-6rem)] lg:w-[min(100%,17rem)] xl:w-[18rem]"
+          aria-label="Cột danh sách phát"
+        >
+          <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-muted-foreground">
               Danh sách phát
             </h2>
@@ -205,20 +215,22 @@ export default function FamilyMusicPage() {
               </Button>
             </div>
           </div>
-          {queue.length === 0 ? (
-            <Card className="p-4">
-              <p className="text-sm text-muted-foreground">Trống.</p>
-            </Card>
-          ) : (
-            <FamilyMusicPlaylist
-              queue={queue}
-              currentId={currentId}
-              actionBusy={actionBusy}
-              onSelect={handleSelectFromPlaylist}
-              onRemove={handleRemoveFromPlaylist}
-              onReorder={handleReorderPlaylist}
-            />
-          )}
+          <div className="scrollbar-none min-h-0 max-h-[min(58vh,24rem)] flex-1 overflow-y-auto overscroll-y-contain lg:max-h-none">
+            {queue.length === 0 ? (
+              <Card className="p-4">
+                <p className="text-sm text-muted-foreground">Trống.</p>
+              </Card>
+            ) : (
+              <FamilyMusicPlaylist
+                queue={queue}
+                currentId={currentId}
+                actionBusy={actionBusy}
+                onSelect={handleSelectFromPlaylist}
+                onRemove={handleRemoveFromPlaylist}
+                onReorder={handleReorderPlaylist}
+              />
+            )}
+          </div>
         </aside>
       </div>
 
