@@ -174,7 +174,7 @@ export function FamilyMusicPlayer({
     applyingRemoteRef.current = true;
     if (lastVideoIdRef.current !== videoId) {
       lastVideoIdRef.current = videoId;
-      /** loadVideoById luôn kích hoạt phát; khi Firestore isPlaying=false dùng cueVideoById (vd. chọn bài trong hàng chờ). */
+      /** loadVideoById luôn kích hoạt phát; khi Firestore isPlaying=false dùng cueVideoById (tạm dừng / chỉ nạp video). */
       if (p.isPlaying) {
         player.loadVideoById(videoId, effective);
       } else {

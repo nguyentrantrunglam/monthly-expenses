@@ -209,7 +209,7 @@ export function useCommunityMusic() {
           if (index < 0 || index === prev.currentIndex) return;
           transaction.update(ref, {
             currentIndex: index,
-            isPlaying: false,
+            isPlaying: true,
             playbackPositionSec: 0,
             stateAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
