@@ -5,14 +5,14 @@ import { playNotificationBell } from "@/lib/play-notification-bell";
 
 /**
  * Khi `joinEvent` tăng (có người khác vào phòng): tắt tiếng YouTube → chuông →
- * một xung đồng bộ (seek) → bật lại tiếng. Lặp cho mỗi lần joinEvent tăng.
+ * bật lại tiếng. Không seek lại người đang nghe để tránh giật về mốc khác.
  */
 export function useMusicRoomJoinSequence(
   joinEvent: number,
   showPlayer: boolean,
 ) {
   const [outputMuted, setOutputMuted] = useState(false);
-  const [resyncTick, setResyncTick] = useState(0);
+  const [resyncTick] = useState(0);
   const processedRef = useRef(0);
 
   useEffect(() => {
@@ -27,9 +27,6 @@ export function useMusicRoomJoinSequence(
       while (!cancelled && processedRef.current < joinEvent) {
         setOutputMuted(true);
         await playNotificationBell();
-        if (cancelled) break;
-        setResyncTick((t) => t + 1);
-        await new Promise((r) => setTimeout(r, 150));
         if (cancelled) break;
         setOutputMuted(false);
         processedRef.current += 1;
