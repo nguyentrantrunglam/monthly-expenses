@@ -335,7 +335,7 @@ export function FamilyMusicPlayer({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between p-3">
         <div className="pointer-events-auto rounded-md bg-black/70 px-2 py-1.5 text-white">
           <label className="flex items-center gap-2 text-xs" htmlFor="music-room-volume">
-            Âm lượng
+            Âm lượng YouTube {localVolume}%
             <input
               id="music-room-volume"
               type="range"
