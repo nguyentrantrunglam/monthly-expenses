@@ -7,6 +7,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { Button } from "@/components/ui/button";
+import { Pause, Play } from "lucide-react";
 import { getEffectivePlaybackSec } from "@/lib/youtube";
 
 let iframeApiLoadPromise: Promise<void> | null = null;
@@ -71,6 +73,7 @@ export function FamilyMusicPlayer({
   const applyingRemoteRef = useRef(false);
   const lastVideoIdRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localInterruptedRef = useRef(false);
   const onPlaybackChangeRef = useRef(onPlaybackChange);
   const onVideoEndedRef = useRef(onVideoEnded);
   const propsRef = useRef({
@@ -98,6 +101,7 @@ export function FamilyMusicPlayer({
   }, [videoId, isPlaying, playbackPositionSec, stateAtMillis]);
 
   const [playerReady, setPlayerReady] = useState(false);
+  const [controlBusy, setControlBusy] = useState(false);
 
   const schedulePublish = useCallback((playing: boolean, pos: number) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -122,6 +126,8 @@ export function FamilyMusicPlayer({
         videoId: p.videoId,
         playerVars: {
           rel: 0,
+          controls: 0,
+          disablekb: 1,
           enablejsapi: 1,
           origin: window.location.origin,
         },
@@ -138,12 +144,38 @@ export function FamilyMusicPlayer({
             const st = e.data;
             const PS = YT.PlayerState;
             if (st === PS.ENDED) {
+              localInterruptedRef.current = false;
               onVideoEndedRef.current?.();
               return;
             }
             if (st === PS.PLAYING) {
+              if (localInterruptedRef.current) {
+                localInterruptedRef.current = false;
+                const pr = propsRef.current;
+                const target = getEffectivePlaybackSec(
+                  pr.playbackPositionSec,
+                  pr.isPlaying,
+                  pr.stateAtMillis,
+                );
+                applyingRemoteRef.current = true;
+                e.target.seekTo(target, true);
+                e.target.playVideo();
+                setTimeout(() => {
+                  applyingRemoteRef.current = false;
+                }, 300);
+                return;
+              }
               schedulePublish(true, e.target.getCurrentTime());
             } else if (st === PS.PAUSED) {
+              const pr = propsRef.current;
+              /**
+               * macOS có thể tự pause khi tháo tai nghe; giữ pause này cục bộ để
+               * không làm gián đoạn người nghe khác đang ở cùng phòng live.
+               */
+              if (pr.isPlaying) {
+                localInterruptedRef.current = true;
+                return;
+              }
               schedulePublish(false, e.target.getCurrentTime());
             }
           },
@@ -164,6 +196,7 @@ export function FamilyMusicPlayer({
     if (!playerReady) return;
     const player = playerRef.current;
     if (!player || !videoId) return;
+    localInterruptedRef.current = false;
 
     const p = propsRef.current;
     const effective = getEffectivePlaybackSec(
@@ -270,11 +303,56 @@ export function FamilyMusicPlayer({
     return () => clearTimeout(t);
   }, [playerReady, videoId, boundaryTick]);
 
+  const handlePlayPause = useCallback(() => {
+    const p = propsRef.current;
+    const player = playerRef.current;
+    const currentPos = player?.getCurrentTime?.() ?? 0;
+    const effectivePos = getEffectivePlaybackSec(
+      p.playbackPositionSec,
+      p.isPlaying,
+      p.stateAtMillis,
+    );
+    const nextPlaying = !p.isPlaying;
+    const nextPositionSec = nextPlaying
+      ? Math.max(currentPos, effectivePos)
+      : Math.max(0, currentPos);
+    setControlBusy(true);
+    onPlaybackChangeRef.current(nextPlaying, nextPositionSec);
+    setTimeout(() => setControlBusy(false), 500);
+  }, []);
+
   return (
-    <div
-      ref={containerRef}
-      className="aspect-video w-full bg-black"
-      aria-label="Trình phát YouTube đồng bộ"
-    />
+    <div className="relative aspect-video w-full bg-black">
+      <div
+        ref={containerRef}
+        className="absolute inset-0"
+        aria-label="Trình phát YouTube đồng bộ"
+      />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end p-3">
+        <div className="pointer-events-auto">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="gap-2 bg-black/70 text-white hover:bg-black/80 hover:text-white"
+            onClick={handlePlayPause}
+            disabled={!playerReady || !videoId || controlBusy}
+            aria-label={isPlaying ? "Tạm dừng" : "Phát"}
+          >
+            {isPlaying ? (
+              <>
+                <Pause className="h-4 w-4" />
+                Tạm dừng
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4" />
+                Phát
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
