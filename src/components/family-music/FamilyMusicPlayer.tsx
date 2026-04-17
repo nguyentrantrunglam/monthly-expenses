@@ -105,6 +105,7 @@ export function FamilyMusicPlayer({
 
   const [playerReady, setPlayerReady] = useState(false);
   const [controlBusy, setControlBusy] = useState(false);
+  const [localVolume, setLocalVolume] = useState(100);
 
   const schedulePublish = useCallback((playing: boolean, pos: number) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -258,11 +259,11 @@ export function FamilyMusicPlayer({
     const player = playerRef.current;
     if (!playerReady || !player) return;
     try {
-      player.setVolume(outputMuted ? 0 : 100);
+      player.setVolume(outputMuted ? 0 : localVolume);
     } catch {
       /* ignore */
     }
-  }, [playerReady, outputMuted]);
+  }, [playerReady, outputMuted, localVolume]);
 
   useEffect(() => {
     if (!playerReady) return;
@@ -331,6 +332,23 @@ export function FamilyMusicPlayer({
         className="absolute inset-0"
         aria-label="Trình phát YouTube đồng bộ"
       />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between p-3">
+        <div className="pointer-events-auto rounded-md bg-black/70 px-2 py-1.5 text-white">
+          <label className="flex items-center gap-2 text-xs" htmlFor="music-room-volume">
+            Âm lượng
+            <input
+              id="music-room-volume"
+              type="range"
+              min={0}
+              max={100}
+              value={localVolume}
+              onChange={(e) => setLocalVolume(Number(e.target.value))}
+              className="h-1.5 w-24 accent-white"
+              aria-label="Điều chỉnh âm lượng cục bộ"
+            />
+          </label>
+        </div>
+      </div>
       {canControlLive && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end p-3">
           <div className="pointer-events-auto">
