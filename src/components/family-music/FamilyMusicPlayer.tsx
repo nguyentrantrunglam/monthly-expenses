@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { Button } from "@/components/ui/button";
-import { Pause, Play } from "lucide-react";
+import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { getEffectivePlaybackSec } from "@/lib/youtube";
 
 let iframeApiLoadPromise: Promise<void> | null = null;
@@ -106,6 +106,7 @@ export function FamilyMusicPlayer({
   const [playerReady, setPlayerReady] = useState(false);
   const [controlBusy, setControlBusy] = useState(false);
   const [localVolume, setLocalVolume] = useState(100);
+  const [muted, setMuted] = useState(false);
 
   const schedulePublish = useCallback((playing: boolean, pos: number) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -259,11 +260,17 @@ export function FamilyMusicPlayer({
     const player = playerRef.current;
     if (!playerReady || !player) return;
     try {
-      player.setVolume(outputMuted ? 0 : localVolume);
+      const ytAudioPlayer = player as YtPlayer & {
+        mute?: () => void;
+        unMute?: () => void;
+      };
+      if (outputMuted || muted) ytAudioPlayer.mute?.();
+      else ytAudioPlayer.unMute?.();
+      player.setVolume(localVolume);
     } catch {
       /* ignore */
     }
-  }, [playerReady, outputMuted, localVolume]);
+  }, [playerReady, outputMuted, localVolume, muted]);
 
   useEffect(() => {
     if (!playerReady) return;
@@ -334,19 +341,36 @@ export function FamilyMusicPlayer({
       />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between p-3">
         <div className="pointer-events-auto rounded-md bg-black/70 px-2 py-1.5 text-white">
-          <label className="flex items-center gap-2 text-xs" htmlFor="music-room-volume">
-            Âm lượng YouTube {localVolume}%
-            <input
-              id="music-room-volume"
-              type="range"
-              min={0}
-              max={100}
-              value={localVolume}
-              onChange={(e) => setLocalVolume(Number(e.target.value))}
-              className="h-1.5 w-24 accent-white"
-              aria-label="Điều chỉnh âm lượng cục bộ"
-            />
-          </label>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1 px-2 text-white hover:bg-white/15 hover:text-white"
+              onClick={() => setMuted((v) => !v)}
+              aria-label={muted ? "Bật tiếng" : "Tắt tiếng"}
+            >
+              {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+              {/* {muted ? "Unmute" : "Mute"} */}
+            </Button>
+            <label className="flex items-center gap-2 text-xs" htmlFor="music-room-volume">
+              {/* Âm lượng {muted ? 0 : localVolume}% */}
+              <input
+                id="music-room-volume"
+                type="range"
+                min={0}
+                max={100}
+                value={localVolume}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  setLocalVolume(next);
+                  if (muted && next > 0) setMuted(false);
+                }}
+                className="h-1.5 w-24 accent-white"
+                aria-label="Điều chỉnh âm lượng cục bộ"
+              />
+            </label>
+          </div>
         </div>
       </div>
       {canControlLive && (
