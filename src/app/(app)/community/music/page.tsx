@@ -11,6 +11,7 @@ import { Loader2, Plus, SkipForward, ListMusic } from "lucide-react";
 import { AddTrackDialog } from "@/components/family-music/AddTrackDialog";
 import { FamilyMusicPlayer } from "@/components/family-music/FamilyMusicPlayer";
 import { FamilyMusicPlaylist } from "@/components/family-music/FamilyMusicPlaylist";
+import { InlineTrackSearch } from "@/components/family-music/InlineTrackSearch";
 
 export default function CommunityMusicPage() {
   const user = useAuthStore((s) => s.user);
@@ -113,6 +114,10 @@ export default function CommunityMusicPage() {
           {localError}
         </p>
       )}
+
+      <Card className="p-4">
+        <InlineTrackSearch actionBusy={actionBusy} onAdd={addFromUrl} />
+      </Card>
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
         <div className="flex min-w-0 min-h-0 flex-1 flex-col gap-6">
