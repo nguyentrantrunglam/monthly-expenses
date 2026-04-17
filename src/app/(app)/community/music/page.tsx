@@ -27,7 +27,7 @@ export default function CommunityMusicPage() {
     reorderQueue,
     publishPlaybackState,
   } = useCommunityMusic();
-  const { joinEvent } = useMusicRoomPresence({
+  const { peers, joinEvent } = useMusicRoomPresence({
     scope: "community",
     enabled: Boolean(user?.uid),
   });
@@ -169,6 +169,23 @@ export default function CommunityMusicPage() {
                 </p>
               )}
             </div>
+            {showPlayer && (
+              <div className="border-t px-4 py-3">
+                <div className="mb-2 text-xs font-medium text-muted-foreground">
+                  Đang nghe ({peers.length})
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {peers.map((peer) => (
+                    <span
+                      key={peer.uid}
+                      className="inline-flex items-center rounded-full border bg-muted px-2.5 py-1 text-xs font-medium text-foreground"
+                    >
+                      {peer.displayName}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </Card>
         </div>
 

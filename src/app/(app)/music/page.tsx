@@ -29,7 +29,7 @@ export default function FamilyMusicPage() {
     reorderQueue,
     publishPlaybackState,
   } = useFamilyMusic();
-  const { joinEvent } = useMusicRoomPresence({
+  const { peers, joinEvent } = useMusicRoomPresence({
     scope: "family",
     familyId: user?.familyId ?? null,
     enabled: Boolean(user?.familyId),
@@ -187,6 +187,23 @@ export default function FamilyMusicPage() {
                 </p>
               )}
             </div>
+            {showPlayer && (
+              <div className="border-t px-4 py-3">
+                <div className="mb-2 text-xs font-medium text-muted-foreground">
+                  Đang nghe ({peers.length})
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {peers.map((peer) => (
+                    <span
+                      key={peer.uid}
+                      className="inline-flex items-center rounded-full border bg-muted px-2.5 py-1 text-xs font-medium text-foreground"
+                    >
+                      {peer.displayName}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </Card>
         </div>
 
