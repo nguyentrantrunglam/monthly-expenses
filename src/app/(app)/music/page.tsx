@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useFamily } from "@/hooks/useFamily";
+import { isFamilyOwner, useFamily } from "@/hooks/useFamily";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { useFamilyMusic } from "@/hooks/useFamilyMusic";
 import { useMusicRoomPresence } from "@/hooks/useMusicRoomPresence";
@@ -43,6 +43,7 @@ export default function FamilyMusicPage() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [boundaryTick, setBoundaryTick] = useState(0);
+  const canManagePlayback = Boolean(user?.isAdmin || isFamilyOwner(user?.uid, family));
 
   const handleVideoEnded = useCallback(async () => {
     try {
@@ -150,6 +151,7 @@ export default function FamilyMusicPage() {
                 outputMuted={outputMuted}
                 resyncTick={resyncTick}
                 boundaryTick={boundaryTick}
+                canControlLive={canManagePlayback}
               />
             ) : (
               <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-muted px-6 text-center">
@@ -164,20 +166,22 @@ export default function FamilyMusicPage() {
             )}
 
             <div className="flex flex-wrap items-center gap-2 border-t p-4">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={loading || queue.length === 0 || actionBusy}
-                onClick={() => void handleNext()}
-                className="gap-2"
-              >
-                {actionBusy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <SkipForward className="h-4 w-4" />
-                )}
-                Bài tiếp
-              </Button>
+              {canManagePlayback ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={loading || queue.length === 0 || actionBusy}
+                  onClick={() => void handleNext()}
+                  className="gap-2"
+                >
+                  {actionBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <SkipForward className="h-4 w-4" />
+                  )}
+                  Bài tiếp
+                </Button>
+              ) : null}
               {currentItem && (
                 <p className="min-w-0 flex-1 text-sm text-muted-foreground line-clamp-2">
                   <span className="font-medium text-foreground">
@@ -242,6 +246,8 @@ export default function FamilyMusicPage() {
                 queue={queue}
                 currentId={currentId}
                 actionBusy={actionBusy}
+                canSelect={canManagePlayback}
+                canManageQueue={canManagePlayback}
                 onSelect={handleSelectFromPlaylist}
                 onRemove={handleRemoveFromPlaylist}
                 onReorder={handleReorderPlaylist}

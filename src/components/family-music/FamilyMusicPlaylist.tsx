@@ -29,6 +29,8 @@ type Props = {
   queue: MusicQueueItem[];
   currentId: string | null | undefined;
   actionBusy: boolean;
+  canSelect?: boolean;
+  canManageQueue?: boolean;
   onSelect: (itemId: string) => void;
   onRemove: (itemId: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
@@ -39,6 +41,8 @@ function SortableRow({
   index,
   isCurrent,
   actionBusy,
+  canSelect,
+  canManageQueue,
   onSelect,
   onRemove,
 }: {
@@ -46,6 +50,8 @@ function SortableRow({
   index: number;
   isCurrent: boolean;
   actionBusy: boolean;
+  canSelect: boolean;
+  canManageQueue: boolean;
   onSelect: (itemId: string) => void;
   onRemove: (itemId: string) => void;
 }) {
@@ -67,29 +73,31 @@ function SortableRow({
   return (
     <li ref={setNodeRef} style={style} className={cn(isDragging && "z-10")}>
       <div className="flex items-stretch gap-0.5">
+        {canManageQueue ? (
+          <button
+            type="button"
+            ref={setActivatorNodeRef}
+            className={cn(
+              "flex shrink-0 cursor-grab touch-none items-center rounded-md px-0.5 text-muted-foreground hover:bg-muted/80 hover:text-foreground active:cursor-grabbing",
+              actionBusy && "pointer-events-none opacity-50",
+            )}
+            aria-label="Kéo để đổi thứ tự"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" aria-hidden />
+          </button>
+        ) : null}
         <button
           type="button"
-          ref={setActivatorNodeRef}
-          className={cn(
-            "flex shrink-0 cursor-grab touch-none items-center rounded-md px-0.5 text-muted-foreground hover:bg-muted/80 hover:text-foreground active:cursor-grabbing",
-            actionBusy && "pointer-events-none opacity-50",
-          )}
-          aria-label="Kéo để đổi thứ tự"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4" aria-hidden />
-        </button>
-        <button
-          type="button"
-          disabled={actionBusy}
+          disabled={actionBusy || !canSelect}
           onClick={() => void onSelect(item.id)}
           className={cn(
             "min-w-0 flex-1 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-            actionBusy && "cursor-not-allowed opacity-60",
+            (actionBusy || !canSelect) && "cursor-not-allowed opacity-60",
           )}
           aria-current={isCurrent ? "true" : undefined}
-          aria-label={`Phát: ${item.title}`}
+          aria-label={canSelect ? `Phát: ${item.title}` : `Không có quyền chọn bài: ${item.title}`}
         >
           <Card
             size="sm"
@@ -123,21 +131,23 @@ function SortableRow({
             </div>
           </Card>
         </button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0 self-center text-muted-foreground hover:text-destructive"
-          disabled={actionBusy}
-          aria-label={`Xóa ${item.title}`}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            void onRemove(item.id);
-          }}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        {canManageQueue ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0 self-center text-muted-foreground hover:text-destructive"
+            disabled={actionBusy}
+            aria-label={`Xóa ${item.title}`}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void onRemove(item.id);
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
       </div>
     </li>
   );
@@ -147,6 +157,8 @@ export function FamilyMusicPlaylist({
   queue,
   currentId,
   actionBusy,
+  canSelect = true,
+  canManageQueue = true,
   onSelect,
   onRemove,
   onReorder,
@@ -164,6 +176,7 @@ export function FamilyMusicPlaylist({
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (!canManageQueue) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = queue.findIndex((q) => q.id === active.id);
@@ -188,6 +201,8 @@ export function FamilyMusicPlaylist({
               index={index}
               isCurrent={item.id === currentId}
               actionBusy={actionBusy}
+              canSelect={canSelect}
+              canManageQueue={canManageQueue}
               onSelect={onSelect}
               onRemove={onRemove}
             />

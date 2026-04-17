@@ -32,6 +32,7 @@ const COMMUNITY_MUSIC_DOC = ["communityMusic", "state"] as const;
  */
 export function useCommunityMusic() {
   const user = useAuthStore((s) => s.user);
+  const canManagePlayback = Boolean(user?.isAdmin);
   const [state, setState] = useState<MusicRoomState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +87,9 @@ export function useCommunityMusic() {
   const publishPlaybackState = useCallback(
     async (isPlaying: boolean, positionSec: number) => {
       if (!user?.uid) return;
+      if (!canManagePlayback) {
+        throw new Error("Chỉ admin mới có quyền play/pause live.");
+      }
       await updateDoc(roomRef(), {
         isPlaying,
         playbackPositionSec: Math.max(0, positionSec),
@@ -93,7 +97,7 @@ export function useCommunityMusic() {
         updatedAt: serverTimestamp(),
       });
     },
-    [user?.uid, roomRef],
+    [user?.uid, roomRef, canManagePlayback],
   );
 
   const addFromUrl = useCallback(
@@ -168,6 +172,7 @@ export function useCommunityMusic() {
 
   const goNext = useCallback(async (): Promise<boolean> => {
     if (!user?.uid) throw new Error("Chưa đăng nhập");
+    if (!canManagePlayback) throw new Error("Chỉ admin mới có quyền chuyển bài.");
     setActionBusy(true);
     let updated = false;
     try {
@@ -192,11 +197,12 @@ export function useCommunityMusic() {
       setActionBusy(false);
     }
     return updated;
-  }, [user?.uid]);
+  }, [user?.uid, canManagePlayback]);
 
   const selectQueueItem = useCallback(
     async (itemId: string) => {
       if (!user?.uid) throw new Error("Chưa đăng nhập");
+      if (!canManagePlayback) throw new Error("Chỉ admin mới có quyền chọn bài.");
       setActionBusy(true);
       try {
         const db = getFirestoreDb();
@@ -219,12 +225,13 @@ export function useCommunityMusic() {
         setActionBusy(false);
       }
     },
-    [user?.uid],
+    [user?.uid, canManagePlayback],
   );
 
   const removeQueueItem = useCallback(
     async (itemId: string) => {
       if (!user?.uid) throw new Error("Chưa đăng nhập");
+      if (!canManagePlayback) throw new Error("Chỉ admin mới có quyền xóa bài.");
       setActionBusy(true);
       try {
         const db = getFirestoreDb();
@@ -278,12 +285,15 @@ export function useCommunityMusic() {
         setActionBusy(false);
       }
     },
-    [user?.uid],
+    [user?.uid, canManagePlayback],
   );
 
   const reorderQueue = useCallback(
     async (fromIndex: number, toIndex: number) => {
       if (!user?.uid) throw new Error("Chưa đăng nhập");
+      if (!canManagePlayback) {
+        throw new Error("Chỉ admin mới có quyền đổi thứ tự hàng chờ.");
+      }
       if (fromIndex === toIndex) return;
       setActionBusy(true);
       try {
@@ -322,7 +332,7 @@ export function useCommunityMusic() {
         setActionBusy(false);
       }
     },
-    [user?.uid],
+    [user?.uid, canManagePlayback],
   );
 
   return {

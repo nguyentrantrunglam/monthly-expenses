@@ -40,6 +40,7 @@ export default function CommunityMusicPage() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [boundaryTick, setBoundaryTick] = useState(0);
+  const canManagePlayback = Boolean(user?.isAdmin);
 
   const handleVideoEnded = useCallback(async () => {
     try {
@@ -132,6 +133,7 @@ export default function CommunityMusicPage() {
                 outputMuted={outputMuted}
                 resyncTick={resyncTick}
                 boundaryTick={boundaryTick}
+                canControlLive={canManagePlayback}
               />
             ) : (
               <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-muted px-6 text-center">
@@ -146,20 +148,22 @@ export default function CommunityMusicPage() {
             )}
 
             <div className="flex flex-wrap items-center gap-2 border-t p-4">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={loading || queue.length === 0 || actionBusy}
-                onClick={() => void handleNext()}
-                className="gap-2"
-              >
-                {actionBusy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <SkipForward className="h-4 w-4" />
-                )}
-                Bài tiếp
-              </Button>
+              {canManagePlayback ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={loading || queue.length === 0 || actionBusy}
+                  onClick={() => void handleNext()}
+                  className="gap-2"
+                >
+                  {actionBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <SkipForward className="h-4 w-4" />
+                  )}
+                  Bài tiếp
+                </Button>
+              ) : null}
               {currentItem && (
                 <p className="min-w-0 flex-1 text-sm text-muted-foreground line-clamp-2">
                   <span className="font-medium text-foreground">
@@ -224,6 +228,8 @@ export default function CommunityMusicPage() {
                 queue={queue}
                 currentId={currentId}
                 actionBusy={actionBusy}
+                canSelect={canManagePlayback}
+                canManageQueue={canManagePlayback}
                 onSelect={handleSelectFromPlaylist}
                 onRemove={handleRemoveFromPlaylist}
                 onReorder={handleReorderPlaylist}

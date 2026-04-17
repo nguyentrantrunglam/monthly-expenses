@@ -51,6 +51,8 @@ type Props = {
   resyncTick?: number;
   /** Tăng sau khi goNext() (lặp một bài / đồng bộ vị trí đầu) */
   boundaryTick?: number;
+  /** Chỉ admin mới được play/pause live toàn phòng */
+  canControlLive?: boolean;
 };
 
 /**
@@ -67,6 +69,7 @@ export function FamilyMusicPlayer({
   outputMuted = false,
   resyncTick = 0,
   boundaryTick = 0,
+  canControlLive = true,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YtPlayer | null>(null);
@@ -328,31 +331,33 @@ export function FamilyMusicPlayer({
         className="absolute inset-0"
         aria-label="Trình phát YouTube đồng bộ"
       />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end p-3">
-        <div className="pointer-events-auto">
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className="gap-2 bg-black/70 text-white hover:bg-black/80 hover:text-white"
-            onClick={handlePlayPause}
-            disabled={!playerReady || !videoId || controlBusy}
-            aria-label={isPlaying ? "Tạm dừng" : "Phát"}
-          >
-            {isPlaying ? (
-              <>
-                <Pause className="h-4 w-4" />
-                Tạm dừng
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4" />
-                Phát
-              </>
-            )}
-          </Button>
+      {canControlLive && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end p-3">
+          <div className="pointer-events-auto">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="gap-2 bg-black/70 text-white hover:bg-black/80 hover:text-white"
+              onClick={handlePlayPause}
+              disabled={!playerReady || !videoId || controlBusy}
+              aria-label={isPlaying ? "Tạm dừng" : "Phát"}
+            >
+              {isPlaying ? (
+                <>
+                  <Pause className="h-4 w-4" />
+                  Tạm dừng
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4" />
+                  Phát
+                </>
+              )}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
