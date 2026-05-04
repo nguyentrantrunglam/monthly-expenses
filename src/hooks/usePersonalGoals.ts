@@ -6,10 +6,12 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -53,6 +55,14 @@ export function parseMonthKey(key: string): { year: number; month: number } {
   return { year: y, month: m };
 }
 
+/** Tháng dương lịch ngay trước `monthKey` (YYYY-MM), hoặc null nếu key không hợp lệ. */
+export function previousMonthKey(monthKey: string): string | null {
+  const { year, month } = parseMonthKey(monthKey);
+  if (!year || !month || month < 1 || month > 12) return null;
+  const d = new Date(year, month - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export function formatMonthLabelVi(key: string): string {
   const { year, month } = parseMonthKey(key);
   if (!year || !month) return key;
@@ -83,6 +93,9 @@ export function monthKeyOptions(
 function logDocId(date: string, taskId: string): string {
   return `${date}__${taskId}`;
 }
+
+/** Đánh dấu tháng đã qua bước “mặc định từ tháng trước” (kể cả khi không có gì để sao chép). */
+const PERSONAL_GOALS_SEEDED_FIELD = "personalGoalsSeeded" as const;
 
 /** Đọc/ghi mục tiêu theo UID. Admin dùng `subjectUid` để xem user khác (cần rule Firestore cho phép). */
 export interface UsePersonalGoalsOptions {
@@ -179,6 +192,106 @@ export function usePersonalGoals(
       unsubLogs();
     };
   }, [uid, monthKey]);
+
+  /** Tháng chưa có mục tiêu: một lần duy nhất sao chép cấu hình từ tháng trước (không sao chép nhật ký). */
+  useEffect(() => {
+    if (readOnly || !uid || loading || tasks.length > 0) return;
+
+    const db = getFirestoreDb();
+    const mk = monthKey;
+    const monthRef = doc(db, "users", uid, "personalGoalMonths", mk);
+    const tasksCol = collection(db, "users", uid, "personalGoalMonths", mk, "tasks");
+
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        const monthSnap = await getDoc(monthRef);
+        if (cancelled) return;
+        if (
+          monthSnap.exists() &&
+          monthSnap.data()?.[PERSONAL_GOALS_SEEDED_FIELD] === true
+        ) {
+          return;
+        }
+
+        const prevKey = previousMonthKey(mk);
+        if (!prevKey) {
+          await setDoc(monthRef, { [PERSONAL_GOALS_SEEDED_FIELD]: true }, { merge: true });
+          return;
+        }
+
+        const prevTasksCol = collection(
+          db,
+          "users",
+          uid,
+          "personalGoalMonths",
+          prevKey,
+          "tasks"
+        );
+        const prevQ = query(prevTasksCol, orderBy("order", "asc"));
+        const prevSnap = await getDocs(prevQ);
+        if (cancelled) return;
+
+        type SeedRow = {
+          title: string;
+          targetAmount: number;
+          unit: string;
+          order: number;
+          accentColor: string;
+          iconId: string;
+        };
+        const fromPrev: SeedRow[] = [];
+        prevSnap.forEach((d) => {
+          const data = d.data();
+          fromPrev.push({
+            title: typeof data.title === "string" ? data.title : "",
+            targetAmount: typeof data.targetAmount === "number" ? data.targetAmount : 0,
+            unit: typeof data.unit === "string" ? data.unit : "",
+            order: typeof data.order === "number" ? data.order : 0,
+            accentColor: sanitizeGoalAccent(
+              typeof data.accentColor === "string" ? data.accentColor : ""
+            ),
+            iconId: sanitizeGoalIconId(typeof data.iconId === "string" ? data.iconId : ""),
+          });
+        });
+
+        await runTransaction(db, async (transaction) => {
+          const m = await transaction.get(monthRef);
+          if (m.exists() && m.data()?.[PERSONAL_GOALS_SEEDED_FIELD] === true) {
+            return;
+          }
+          if (fromPrev.length === 0) {
+            transaction.set(monthRef, { [PERSONAL_GOALS_SEEDED_FIELD]: true }, { merge: true });
+            return;
+          }
+          for (const row of fromPrev) {
+            const taskRef = doc(tasksCol);
+            transaction.set(taskRef, {
+              title: row.title,
+              targetAmount: row.targetAmount,
+              unit: row.unit,
+              order: row.order,
+              accentColor: row.accentColor,
+              iconId: row.iconId,
+              createdAt: serverTimestamp(),
+            });
+          }
+          transaction.set(monthRef, { [PERSONAL_GOALS_SEEDED_FIELD]: true }, { merge: true });
+        });
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setError("Không khởi tạo mục tiêu từ tháng trước được.");
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, monthKey, readOnly, loading, tasks.length]);
 
   const totalsByTask = useMemo(() => {
     const m: Record<string, number> = {};
