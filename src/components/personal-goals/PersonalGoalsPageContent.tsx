@@ -38,6 +38,7 @@ import {
   contrastingForegroundForBg,
   getGoalIconComponent,
 } from "@/lib/personal-goal-task-styles";
+import { cn } from "@/lib/utils";
 
 function defaultDateInMonth(monthKey: string): string {
   const today = currentMonthKey();
@@ -573,6 +574,11 @@ export function PersonalGoalsPageContent({
   }, [monthKey]);
 
   const [dayLogModalOpen, setDayLogModalOpen] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedTaskId(null);
+  }, [monthKey]);
 
   const taskById = useMemo(() => {
     const m: Record<string, PersonalGoalTask> = {};
@@ -614,6 +620,22 @@ export function PersonalGoalsPageContent({
     }
     return map;
   }, [logs, monthKey, taskById]);
+
+  const highlightedDatesForTask = useMemo(() => {
+    if (!selectedTaskId) return new Set<string>();
+    const dates = new Set<string>();
+    for (const l of logs) {
+      if (!l.date.startsWith(monthKey)) continue;
+      if (l.taskId !== selectedTaskId) continue;
+      const hasAmt = l.amount > 0;
+      const note = (l.note ?? "").trim();
+      if (!hasAmt && !note) continue;
+      dates.add(l.date);
+    }
+    return dates;
+  }, [logs, monthKey, selectedTaskId]);
+
+  const selectedTask = selectedTaskId ? taskById[selectedTaskId] : undefined;
 
   const logsForSelectedDate = useMemo(
     () =>
@@ -663,6 +685,11 @@ export function PersonalGoalsPageContent({
       return;
     }
     await deleteTask(t.id);
+    if (selectedTaskId === t.id) setSelectedTaskId(null);
+  };
+
+  const toggleTaskSelection = (taskId: string) => {
+    setSelectedTaskId((prev) => (prev === taskId ? null : taskId));
   };
 
   const saveDayLogsBatch = async (
@@ -775,10 +802,29 @@ export function PersonalGoalsPageContent({
                 target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0;
               const CardIcon = getGoalIconComponent(t.iconId);
               const cardFg = contrastingForegroundForBg(t.accentColor);
+              const isSelected = selectedTaskId === t.id;
               return (
                 <Card
                   key={t.id}
-                  className="min-w-0 flex-[1_1_100%] p-4 sm:flex-[1_1_calc(50%-0.375rem)] lg:flex-[1_1_calc(33.333%-0.5rem)]"
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isSelected}
+                  onClick={() => toggleTaskSelection(t.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleTaskSelection(t.id);
+                    }
+                  }}
+                  className={cn(
+                    "min-w-0 flex-[1_1_100%] cursor-pointer p-4 transition-shadow sm:flex-[1_1_calc(50%-0.375rem)] lg:flex-[1_1_calc(33.333%-0.5rem)]",
+                    isSelected && "ring-2 ring-offset-2 ring-offset-background"
+                  )}
+                  style={
+                    isSelected
+                      ? { boxShadow: `0 0 0 2px ${t.accentColor}` }
+                      : undefined
+                  }
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1 space-y-2">
@@ -820,7 +866,10 @@ export function PersonalGoalsPageContent({
                       )}
                     </div>
                     {!readOnly ? (
-                      <div className="flex shrink-0 gap-1 sm:flex-col">
+                      <div
+                        className="flex shrink-0 gap-1 sm:flex-col"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Button
                           variant="ghost"
                           size="icon-sm"
@@ -862,6 +911,8 @@ export function PersonalGoalsPageContent({
             loading={loading}
             onOpenDay={openDayLog}
             readOnly={readOnly}
+            highlightedDates={highlightedDatesForTask}
+            highlightColor={selectedTask?.accentColor}
           />
         </section>
       )}

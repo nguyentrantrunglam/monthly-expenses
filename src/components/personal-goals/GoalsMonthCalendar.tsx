@@ -71,6 +71,8 @@ export function GoalsMonthCalendar({
   loading,
   onOpenDay,
   readOnly,
+  highlightedDates,
+  highlightColor,
 }: {
   monthKey: string;
   onMonthKeyChange: (key: string) => void;
@@ -80,6 +82,9 @@ export function GoalsMonthCalendar({
   onOpenDay: (ymd: string) => void;
   /** Admin xem user khác — chỉ xem nhật ký, không ghi. */
   readOnly?: boolean;
+  /** Ngày có nhật ký của mục tiêu đang chọn — tô nổi bật trên lưới. */
+  highlightedDates?: ReadonlySet<string>;
+  highlightColor?: string;
 }) {
   const monthDate = useMemo(() => monthDateFromKey(monthKey), [monthKey]);
 
@@ -93,9 +98,13 @@ export function GoalsMonthCalendar({
     <div className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-muted-foreground sm:max-w-md">
-          {readOnly
-            ? "Bấm ô ngày hoặc thanh màu để xem nhật ký (chỉ đọc)."
-            : "Cùng kiểu lưới với Lịch gia đình: bấm ô ngày để ghi/sửa nhật ký; bấm thanh màu cũng mở form ngày đó."}
+          {highlightedDates && highlightedDates.size > 0
+            ? readOnly
+              ? "Các ô được tô là ngày có nhật ký của mục tiêu đang chọn. Bấm ô ngày hoặc thanh màu để xem chi tiết."
+              : "Các ô được tô là ngày có nhật ký của mục tiêu đang chọn. Bấm ô ngày để ghi/sửa; bấm thanh màu cũng mở form ngày đó."
+            : readOnly
+              ? "Bấm ô ngày hoặc thanh màu để xem nhật ký (chỉ đọc). Bấm thẻ công việc phía trên để lọc ngày theo mục tiêu."
+              : "Bấm thẻ công việc phía trên để tô các ngày có nhật ký mục tiêu đó. Bấm ô ngày để ghi/sửa nhật ký; bấm thanh màu cũng mở form ngày đó."}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={onToday}>
@@ -157,6 +166,8 @@ export function GoalsMonthCalendar({
             const isCurrentMonth = isSameMonth(day, monthDate);
             const isTodayDate = isToday(day);
             const inScope = key.startsWith(monthKey);
+            const isHighlighted =
+              inScope && highlightedDates?.has(key) === true;
 
             return (
               <div
@@ -181,6 +192,14 @@ export function GoalsMonthCalendar({
                 } ${
                   isCurrentMonth ? "bg-background" : "bg-muted/20"
                 }`}
+                style={
+                  isHighlighted && highlightColor
+                    ? {
+                        backgroundColor: `${highlightColor}22`,
+                        boxShadow: `inset 0 0 0 2px ${highlightColor}`,
+                      }
+                    : undefined
+                }
               >
                 <div
                   className={`mb-1 flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium ${
